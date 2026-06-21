@@ -642,21 +642,25 @@
     let searchRenderTimer = null;
 
     const markdownService = {
-      inline(text) {
+      inline(text, images = {}) {
         let safe = escapeHtml(text);
         safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
         safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         safe = safe.replace(/__([^_]+)__/g, '<strong>$1</strong>');
         safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        safe = safe.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (match, alt, url) => {
+          if (url.startsWith('local:') && images[url.slice(6)]) url = images[url.slice(6)];
+          return '<img src="' + url + '" alt="' + alt + '" style="max-width:100%; border-radius:8px; display:block; margin: 10px 0;">';
+        });
         safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
         return safe;
       },
-      render(source) {
+      render(source, images = {}) {
         if (!normalizeText(source)) return '<p class="markdown-placeholder">La vista previa aparecerá aquí.</p>';
         const lines = String(source).replace(/\r/g, '').split('\n');
         const blocks = [];
         let inCode = false, code = [], listType = null, paragraph = [], codeLang = '';
-        const flushParagraph = () => { if (paragraph.length) { blocks.push('<p>' + this.inline(paragraph.join(' ')) + '</p>'); paragraph = []; } };
+        const flushParagraph = () => { if (paragraph.length) { blocks.push('<p>' + this.inline(paragraph.join(' '), images) + '</p>'); paragraph = []; } };
         const closeList = () => { if (listType) { blocks.push('</' + listType + '>'); listType = null; } };
         const renderCodeBlock = () => {
           let hCode = '', raw = code.join('\n');
@@ -680,12 +684,12 @@
           const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
           const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
           const quote = line.match(/^>\s?(.+)$/);
-          if (heading) { flushParagraph(); closeList(); const level = heading[1].length; blocks.push('<h' + level + '>' + this.inline(heading[2]) + '</h' + level + '>'); }
+          if (heading) { flushParagraph(); closeList(); const level = heading[1].length; blocks.push('<h' + level + '>' + this.inline(heading[2], images) + '</h' + level + '>'); }
           else if (unordered || ordered) {
             flushParagraph(); const type = unordered ? 'ul' : 'ol';
             if (listType !== type) { closeList(); blocks.push('<' + type + '>'); listType = type; }
-            blocks.push('<li>' + this.inline((unordered || ordered)[1]) + '</li>');
-          } else if (quote) { flushParagraph(); closeList(); blocks.push('<blockquote>' + this.inline(quote[1]) + '</blockquote>'); }
+            blocks.push('<li>' + this.inline((unordered || ordered)[1], images) + '</li>');
+          } else if (quote) { flushParagraph(); closeList(); blocks.push('<blockquote>' + this.inline(quote[1], images) + '</blockquote>'); }
           else if (!line.trim()) { flushParagraph(); closeList(); }
           else paragraph.push(line.trim());
         }
@@ -853,7 +857,10 @@
           const deletedAt = item.deletedAt && !Number.isNaN(Date.parse(item.deletedAt)) ? item.deletedAt : null;
           const shared = { id, type, title, category:normalizeText(item.category), subcategory:normalizeText(item.subcategory), tags:parseTags(item.tags), description:normalizeText(item.description), favorite:Boolean(item.favorite), createdAt, updatedAt, deletedAt };
           if (item.clonedFrom && /^(note|bookmark)-[a-zA-Z0-9-]{8,}$/.test(String(item.clonedFrom))) shared.clonedFrom = String(item.clonedFrom);
-          if (type === 'note') return { ...shared, content:String(item.content || ''), contentFormat:'markdown' };
+          if (type === 'note') {
+            const images = (item.images && typeof item.images === 'object') ? item.images : {};
+            return { ...shared, content:String(item.content || ''), contentFormat:'markdown', images };
+          }
           const url = normalizeUrl(item.url);
           if (!url) throw new Error('Hay un marcador con una URL no válida.');
           return { ...shared, url, color:resolvePaletteColor(item.color), icon:bookmarkIcons.includes(item.icon) ? item.icon : 'link' };
@@ -1215,24 +1222,58 @@
 
     function notePreviewModal(item) {
       if (!item) return;
-      const body = '<div class="note-inspector"><div class="note-inspector-summary"><section class="inspector-block"><h3>Categoría</h3><p>' + escapeHtml(item.category || 'Sin categoría') + '</p></section><section class="inspector-block"><h3>Subcategoría</h3><p>' + escapeHtml(item.subcategory || 'Sin subcategoría') + '</p></section><section class="inspector-block"><h3>Tags</h3><div class="tag-row">' + renderTags(item.tags) + '</div></section><section class="inspector-block"><h3>Descripción</h3><p>' + escapeHtml(item.description || 'Sin descripción.') + '</p></section></div><article class="markdown-preview note-reader">' + markdownService.render(item.content) + '</article>' + relatedHtml(item) + '</div>';
+      const body = '<div class="note-inspector"><div class="note-inspector-summary"><section class="inspector-block"><h3>Categoría</h3><p>' + escapeHtml(item.category || 'Sin categoría') + '</p></section><section class="inspector-block"><h3>Subcategoría</h3><p>' + escapeHtml(item.subcategory || 'Sin subcategoría') + '</p></section><section class="inspector-block"><h3>Tags</h3><div class="tag-row">' + renderTags(item.tags) + '</div></section><section class="inspector-block"><h3>Descripción</h3><p>' + escapeHtml(item.description || 'Sin descripción.') + '</p></section></div><article class="markdown-preview note-reader">' + markdownService.render(item.content, item.images) + '</article>' + relatedHtml(item) + '</div>';
       modalShell(item.title,'Vista de lectura',body,'<button class="button" data-action="close-modal">Cerrar</button><button class="button primary" id="inspectEditNote">' + icon('edit',16) + 'Editar nota</button>',true);
       el('inspectEditNote').addEventListener('click', () => { closeModal(true); noteForm(item); });
     }
 
     function noteForm(item = null) {
-      const value = item || { title:'', category:'', subcategory:'', tags:[], description:'', content:'', favorite:false };
-      const body = '<form id="noteForm" class="form-grid" novalidate><div class="field full"><label for="noteTitle">Título *</label><input class="input" id="noteTitle" name="title" value="' + escapeHtml(value.title) + '"><div class="field-error" data-error="title"></div></div><div class="field"><label for="noteCategory">Categoría</label><input class="input" id="noteCategory" name="category" list="categoryOptions" value="' + escapeHtml(value.category) + '"></div><div class="field"><label for="noteSubcategory">Subcategoría</label><input class="input" id="noteSubcategory" name="subcategory" list="subcategoryOptions" value="' + escapeHtml(value.subcategory) + '"></div><div class="field full"><label for="noteTags">Tags</label><input class="input" id="noteTags" name="tags" list="tagOptions" value="' + escapeHtml((value.tags || []).join(', ')) + '" placeholder="concepto, proyecto, referencia"></div><div class="field full"><label for="noteDescription">Descripción</label><textarea class="textarea" id="noteDescription" name="description" rows="2">' + escapeHtml(value.description) + '</textarea></div><div class="field full"><label for="noteContent">Contenido Markdown</label><div class="editor-toolbar"><button type="button" class="icon-button" data-md="heading" title="Título">' + icon('heading',15) + '</button><button type="button" class="icon-button" data-md="bold" title="Negrita">' + icon('bold',15) + '</button><button type="button" class="icon-button" data-md="italic" title="Cursiva">' + icon('italic',15) + '</button><span class="editor-separator"></span><button type="button" class="icon-button" data-md="list" title="Lista">' + icon('list',15) + '</button><button type="button" class="icon-button" data-md="link" title="Enlace">' + icon('link',15) + '</button><button type="button" class="icon-button" data-md="code" title="Código inline">' + icon('code',15) + '</button><button type="button" class="icon-button" data-md="codeblock" title="Bloque de código">' + icon('terminal',15) + '</button><button type="button" class="icon-button" data-md="quote" title="Cita">' + icon('quote',15) + '</button><span class="editor-separator"></span><button type="button" class="icon-button" data-action="markdown-guide" title="Guía de Markdown">' + icon('help',15) + '</button><div class="editor-modes"><button type="button" data-editor-mode="edit">Editar</button><button type="button" class="active" data-editor-mode="split">Dividir</button><button type="button" data-editor-mode="preview">Preview</button></div></div><div class="editor-space" id="editorSpace"><textarea class="markdown-editor" id="noteContent" name="content" spellcheck="true">' + escapeHtml(value.content) + '</textarea><div class="markdown-preview" id="markdownPreview">' + markdownService.render(value.content) + '</div></div></div><div class="field full"><label class="check-row"><input type="checkbox" name="favorite" ' + (value.favorite ? 'checked' : '') + '> Marcar como favorita</label></div></form>';
+      const value = item || { title:'', category:'', subcategory:'', tags:[], description:'', content:'', favorite:false, images:{} };
+      const body = '<form id="noteForm" class="form-grid" novalidate><div class="field full"><label for="noteTitle">Título *</label><input class="input" id="noteTitle" name="title" value="' + escapeHtml(value.title) + '"><div class="field-error" data-error="title"></div></div><div class="field"><label for="noteCategory">Categoría</label><input class="input" id="noteCategory" name="category" list="categoryOptions" value="' + escapeHtml(value.category) + '"></div><div class="field"><label for="noteSubcategory">Subcategoría</label><input class="input" id="noteSubcategory" name="subcategory" list="subcategoryOptions" value="' + escapeHtml(value.subcategory) + '"></div><div class="field full"><label for="noteTags">Tags</label><input class="input" id="noteTags" name="tags" list="tagOptions" value="' + escapeHtml((value.tags || []).join(', ')) + '" placeholder="concepto, proyecto, referencia"></div><div class="field full"><label for="noteDescription">Descripción</label><textarea class="textarea" id="noteDescription" name="description" rows="2">' + escapeHtml(value.description) + '</textarea></div><div class="field full"><label for="noteContent">Contenido Markdown</label><div class="editor-toolbar"><button type="button" class="icon-button" data-md="heading" title="Título">' + icon('heading',15) + '</button><button type="button" class="icon-button" data-md="bold" title="Negrita">' + icon('bold',15) + '</button><button type="button" class="icon-button" data-md="italic" title="Cursiva">' + icon('italic',15) + '</button><span class="editor-separator"></span><button type="button" class="icon-button" data-md="list" title="Lista">' + icon('list',15) + '</button><button type="button" class="icon-button" data-md="link" title="Enlace">' + icon('link',15) + '</button><button type="button" class="icon-button" data-md="code" title="Código inline">' + icon('code',15) + '</button><button type="button" class="icon-button" data-md="codeblock" title="Bloque de código">' + icon('terminal',15) + '</button><button type="button" class="icon-button" data-md="quote" title="Cita">' + icon('quote',15) + '</button><span class="editor-separator"></span><button type="button" class="icon-button" data-action="markdown-guide" title="Guía de Markdown">' + icon('help',15) + '</button><div class="editor-modes"><button type="button" data-editor-mode="edit">Editar</button><button type="button" class="active" data-editor-mode="split">Dividir</button><button type="button" data-editor-mode="preview">Preview</button></div></div><div class="editor-space" id="editorSpace"><textarea class="markdown-editor" id="noteContent" name="content" spellcheck="true">' + escapeHtml(value.content) + '</textarea><div class="markdown-preview" id="markdownPreview">' + markdownService.render(value.content, value.images) + '</div></div></div><div class="field full"><label class="check-row"><input type="checkbox" name="favorite" ' + (value.favorite ? 'checked' : '') + '> Marcar como favorita</label></div></form>';
       modalShell(item ? 'Editar nota' : 'Nueva nota', item ? 'Última modificación: ' + formatDate(item.updatedAt) : 'Escribe en Markdown y revisa el resultado en directo.', body, '<span class="unsaved" id="unsavedIndicator"><span class="storage-dot"></span>Cambios sin guardar</span><button class="button" data-action="close-modal">Cancelar</button><button class="button primary" id="saveNote">' + icon('check',16) + 'Guardar nota</button>', true);
       const form = el('noteForm'), textarea = el('noteContent'), preview = el('markdownPreview');
+      let formImages = { ...(value.images || {}) };
       const markDirty = () => el('unsavedIndicator').classList.add('visible');
-      form.addEventListener('input', event => { markDirty(); if (event.target === textarea) preview.innerHTML = markdownService.render(textarea.value); });
-      form.querySelectorAll('[data-editor-mode]').forEach(button => button.addEventListener('click', () => { const mode = button.dataset.editorMode; el('editorSpace').className = 'editor-space' + (mode === 'split' ? '' : ' mode-' + mode); form.querySelectorAll('[data-editor-mode]').forEach(b => b.classList.toggle('active', b === button)); if (mode !== 'edit') preview.innerHTML = markdownService.render(textarea.value); }));
+      form.addEventListener('input', event => { markDirty(); if (event.target === textarea) preview.innerHTML = markdownService.render(textarea.value, formImages); });
+      textarea.addEventListener('paste', event => {
+        const items = event.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            event.preventDefault();
+            const file = item.getAsFile();
+            if (!file) continue;
+            const reader = new FileReader();
+            reader.onload = e => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width, height = img.height;
+                const MAX_WIDTH = 800;
+                if (width > MAX_WIDTH) { height = Math.round(height * MAX_WIDTH / width); width = MAX_WIDTH; }
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                const start = textarea.selectionStart, end = textarea.selectionEnd;
+                const imgId = 'img-' + Date.now();
+                formImages[imgId] = base64;
+                textarea.setRangeText(`![Imagen pegada](local:${imgId})\n`, start, end, 'end');
+                textarea.focus(); preview.innerHTML = markdownService.render(textarea.value, formImages); markDirty();
+              };
+              img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            break;
+          }
+        }
+      });
+      form.querySelectorAll('[data-editor-mode]').forEach(button => button.addEventListener('click', () => { const mode = button.dataset.editorMode; el('editorSpace').className = 'editor-space' + (mode === 'split' ? '' : ' mode-' + mode); form.querySelectorAll('[data-editor-mode]').forEach(b => b.classList.toggle('active', b === button)); if (mode !== 'edit') preview.innerHTML = markdownService.render(textarea.value, formImages); }));
       const snippets = { heading:['## ','Título'], bold:['**','texto en negrita','**'], italic:['*','texto en cursiva','*'], list:['- ','elemento'], link:['[','texto','](https://)'], code:['`','código','`'], codeblock:['```\n','código','\n```'], quote:['> ','cita'] };
       form.querySelectorAll('[data-md]').forEach(button => button.addEventListener('click', () => {
         const parts = snippets[button.dataset.md], start = textarea.selectionStart, end = textarea.selectionEnd;
         const selected = textarea.value.slice(start,end) || parts[1]; const before = parts[0], after = parts[2] || '';
-        textarea.setRangeText(before + selected + after,start,end,'end'); textarea.focus(); preview.innerHTML = markdownService.render(textarea.value); markDirty();
+        textarea.setRangeText(before + selected + after,start,end,'end'); textarea.focus(); preview.innerHTML = markdownService.render(textarea.value, formImages); markDirty();
       }));
       form.querySelector('[data-action="markdown-guide"]')?.addEventListener('click', () => {
         const dlg = el('guideDialog');
@@ -1245,7 +1286,10 @@
         const data = Object.fromEntries(new FormData(form)); const title = normalizeText(data.title);
         form.querySelector('[data-error="title"]').textContent = title ? '' : 'Escribe un título.';
         if (!title) { toast('Falta el título','Ponle un nombre a la nota antes de guardar.','error'); return; }
-        await entityService.save('note', { title, category:normalizeText(data.category), subcategory:normalizeText(data.subcategory), tags:parseTags(data.tags), description:normalizeText(data.description), content:String(data.content || ''), contentFormat:'markdown', favorite:form.elements.favorite.checked }, item?.id);
+        const content = String(data.content || '');
+        const activeImages = {};
+        for (const key of Object.keys(formImages)) { if (content.includes(`local:${key}`)) activeImages[key] = formImages[key]; }
+        await entityService.save('note', { title, category:normalizeText(data.category), subcategory:normalizeText(data.subcategory), tags:parseTags(data.tags), description:normalizeText(data.description), content, images:activeImages, contentFormat:'markdown', favorite:form.elements.favorite.checked }, item?.id);
         closeModal(true); toast('Nota guardada','Los cambios se han guardado en IndexedDB.'); render();
       });
     }
