@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Local SQLite database — this is personal data (bookmarks, notes, tags).
+# Never commit it; the server recreates data/ on startup.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Build output
+client/dist/
+
+# Local tooling state
+.atl/
+.codegraph/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+npm-debug.log*
