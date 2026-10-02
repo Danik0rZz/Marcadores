@@ -106,6 +106,7 @@ export default function App() {
   const [isManualLinkModalOpen, setIsManualLinkModalOpen] = useState(false);
   const [manualLinkSource, setManualLinkSource] = useState(null);
   const [manualLinkType, setManualLinkType] = useState('bookmark');
+  const [manualLinkTargets, setManualLinkTargets] = useState([]);
 
   // Load all data
   const loadData = useCallback(async () => {
@@ -262,17 +263,28 @@ export default function App() {
     }
   };
 
-  // Manual Link Openers
-  const handleOpenManualLinkFromBookmark = (bookmark) => {
-    setManualLinkSource(bookmark);
-    setManualLinkType('bookmark');
-    setIsManualLinkModalOpen(true);
+  // Manual Link Openers. Targets are fetched unfiltered: the active search or
+  // taxonomy filter must not hide items the user wants to link to.
+  const handleOpenManualLinkFromBookmark = async (bookmark) => {
+    try {
+      setManualLinkTargets(await fetchNotes());
+      setManualLinkSource(bookmark);
+      setManualLinkType('bookmark');
+      setIsManualLinkModalOpen(true);
+    } catch (err) {
+      showToast('Error', err.message, true);
+    }
   };
 
-  const handleOpenManualLinkFromNote = (note) => {
-    setManualLinkSource(note);
-    setManualLinkType('note');
-    setIsManualLinkModalOpen(true);
+  const handleOpenManualLinkFromNote = async (note) => {
+    try {
+      setManualLinkTargets(await fetchBookmarks());
+      setManualLinkSource(note);
+      setManualLinkType('note');
+      setIsManualLinkModalOpen(true);
+    } catch (err) {
+      showToast('Error', err.message, true);
+    }
   };
 
   const handlePerformLink = async (bmId, nId, notesText) => {
@@ -418,7 +430,7 @@ export default function App() {
             <HomeDashboard
               stats={stats}
               onNavigateTab={(tab) => setCurrentTab(tab)}
-              onOpenNoteDetail={(note) => setSelectedNoteForDetail(note)}
+              onOpenNoteDetail={(note) => handleOpenTreeItem({ type: 'note', id: note.id })}
               onOpenBookmark={(bm) => window.open(bm.url, '_blank')}
               onOpenSettings={() => setCurrentTab('settings')}
             />
@@ -755,10 +767,11 @@ export default function App() {
             handleOpenManualLinkFromNote(item);
           }
         }}
-        onUnlinkRelation={handlePerformUnlink}
+        onUnlinkManual={handlePerformUnlink}
       />
 
       <ManualLinkModal
+        key={manualLinkSource ? `${manualLinkType}-${manualLinkSource.id}` : 'closed'}
         isOpen={isManualLinkModalOpen}
         onClose={() => {
           setIsManualLinkModalOpen(false);
@@ -766,8 +779,7 @@ export default function App() {
         }}
         sourceItem={manualLinkSource}
         sourceType={manualLinkType}
-        bookmarks={bookmarks}
-        notes={notes}
+        availableTargets={manualLinkTargets}
         onLink={handlePerformLink}
       />
 

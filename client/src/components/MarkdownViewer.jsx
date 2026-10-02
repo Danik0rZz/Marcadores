@@ -2,13 +2,23 @@ import React, { useMemo } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default function MarkdownViewer({ content = '', className = '', onWikiLinkClick = null }) {
   const htmlContent = useMemo(() => {
     if (!content) return '';
     try {
       // 1. Pre-process [[WikiLinks]] before markdown parsing
       const withWikiLinks = content.replace(/\[\[(.*?)\]\]/g, (match, title) => {
-        return `<span class="wikilink-pill" data-wikititle="${title.trim()}">🔗 ${title.trim()}</span>`;
+        const safeTitle = escapeHtml(title.trim());
+        return `<span class="wikilink-pill" data-wikititle="${safeTitle}">🔗 ${safeTitle}</span>`;
       });
 
       // 2. Custom renderer for marked to build code-wrap with copy button and highlight.js
@@ -16,7 +26,9 @@ export default function MarkdownViewer({ content = '', className = '', onWikiLin
 
       renderer.code = function({ text, lang }) {
         const language = lang || '';
-        let highlighted = text;
+        // Without a highlighter the source must be escaped, or HTML/JSX snippets
+        // would be parsed as real markup instead of shown as code.
+        let highlighted = escapeHtml(text);
 
         if (typeof window !== 'undefined' && window.hljs) {
           try {
@@ -26,27 +38,27 @@ export default function MarkdownViewer({ content = '', className = '', onWikiLin
               highlighted = window.hljs.highlightAuto(text).value;
             }
           } catch {
-            highlighted = text;
+            highlighted = escapeHtml(text);
           }
         }
 
-        const langBadge = language ? `<span class="code-lang">${language}</span>` : '';
+        const safeLang = escapeHtml(language);
+        const langBadge = language ? `<span class="code-lang">${safeLang}</span>` : '';
         return `
           <div class="code-wrap">
             ${langBadge}
             <button type="button" class="code-copy" data-code="${encodeURIComponent(text)}">Copiar</button>
-            <pre><code class="hljs ${language ? `language-${language}` : ''}">${highlighted}</code></pre>
+            <pre><code class="hljs ${language ? `language-${safeLang}` : ''}">${highlighted}</code></pre>
           </div>
         `;
       };
 
-      marked.setOptions({
+      // Options are passed per call so the shared marked instance is not mutated.
+      const rawHtml = marked.parse(withWikiLinks, {
         renderer,
         breaks: true,
         gfm: true
       });
-
-      const rawHtml = marked.parse(withWikiLinks);
 
       return DOMPurify.sanitize(rawHtml, {
         ADD_ATTR: ['data-wikititle', 'data-code'],
@@ -54,7 +66,8 @@ export default function MarkdownViewer({ content = '', className = '', onWikiLin
       });
     } catch (err) {
       console.error('Error rendering markdown:', err);
-      return content;
+      // This string goes into dangerouslySetInnerHTML: never return raw input.
+      return `<pre>${escapeHtml(content)}</pre>`;
     }
   }, [content]);
 

@@ -13,6 +13,7 @@ export default function ManualLinkModal({
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [notes, setNotes] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen || !sourceItem) return null;
 
@@ -23,14 +24,19 @@ export default function ManualLinkModal({
     return titleMatch || catMatch;
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedTargetId) return;
+    if (!selectedTargetId || isSubmitting) return;
 
     const bmId = isBookmark ? sourceItem.id : Number(selectedTargetId);
     const nId = isBookmark ? Number(selectedTargetId) : sourceItem.id;
 
-    onLink(bmId, nId, notes);
+    setIsSubmitting(true);
+    try {
+      await onLink(bmId, nId, notes);
+    } finally {
+      setIsSubmitting(false);
+    }
     onClose();
   };
 
@@ -126,7 +132,7 @@ export default function ManualLinkModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedTargetId}
+              disabled={!selectedTargetId || isSubmitting}
               className="px-4 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
               Confirmar Vínculo

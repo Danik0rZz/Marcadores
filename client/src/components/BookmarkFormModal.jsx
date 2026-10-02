@@ -46,6 +46,16 @@ const ICONS_MAP = {
   video: Video
 };
 
+// A half-typed URL such as "https://" makes new URL() throw; never let that crash render.
+function previewDomain(url) {
+  if (!url) return 'dominio.com';
+  try {
+    return new URL(url, 'https://ejemplo.com').hostname.replace(/^www\./, '') || 'dominio.com';
+  } catch {
+    return 'dominio.com';
+  }
+}
+
 export default function BookmarkFormModal({
   isOpen,
   onClose,
@@ -134,10 +144,15 @@ export default function BookmarkFormModal({
       return;
     }
 
+    // Only http(s): a javascript: or data: URL would run code when opened.
+    let protocol = '';
     try {
-      new URL(url.trim());
+      protocol = new URL(url.trim()).protocol;
     } catch {
-      setError('Por favor ingresá una URL válida (ej. https://ejemplo.com).');
+      // handled below
+    }
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      setError('Por favor ingresá una URL válida que empiece con http:// o https://');
       return;
     }
 
@@ -428,7 +443,7 @@ export default function BookmarkFormModal({
                 <div className="preview-card-foot">
                   <Globe size={11} />
                   <div className="preview-card-domain">
-                    {url ? (new URL(url, 'https://ejemplo.com').hostname.replace(/^www\./, '')) : 'dominio.com'}
+                    {previewDomain(url)}
                   </div>
                 </div>
               </div>
