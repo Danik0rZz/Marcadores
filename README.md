@@ -54,9 +54,7 @@ Necesitás **Node.js 20.19 o superior**. El proyecto tiene dependencias en la ra
 ```bash
 git clone <url-del-repositorio>
 cd <carpeta-del-repositorio>
-npm install
-npm install --prefix server
-npm install --prefix client
+npm run setup   # instala dependencias en la raíz, server/ y client/
 ```
 
 ### 1. Modo Desarrollo (Recomendado para trabajar)
@@ -81,8 +79,11 @@ Abrí tu navegador en **`http://localhost:3001`**.
 
 ### 3. Ejecutar Pruebas Automatizadas
 ```bash
-npm test
+npm test        # tests del servidor + build del cliente
+npm run lint    # análisis estático del cliente (oxlint)
 ```
+
+GitHub Actions ejecuta ambos en cada push y pull request (`.github/workflows/ci.yml`).
 
 Las pruebas usan una base de datos temporal: nunca tocan `data/app.db`.
 
