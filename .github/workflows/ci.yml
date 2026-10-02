@@ -59,4 +59,8 @@ jobs:
         run: npx playwright-core install --with-deps chromium
 
       - name: End-to-end tests (local server and GitHub Pages builds)
-        run: npm run e2e
+        run: npm run e2e:ci
+
+      - name: Report failures as annotations
+        if: failure()
+        run: node e2e/report-failures.mjs e2e-report.xml

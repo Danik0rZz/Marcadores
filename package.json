@@ -9,6 +9,7 @@
     "start": "npm start --prefix server",
     "test": "npm test --prefix server && npm run test:browser-db --prefix server && npm run build --prefix client && npm run build:pages --prefix client",
     "e2e": "npm run build --prefix client && npm run build:pages --prefix client && node --test --test-concurrency=1 e2e/local.e2e.mjs e2e/pages.e2e.mjs",
+    "e2e:ci": "npm run build --prefix client && npm run build:pages --prefix client && node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=e2e-report.xml e2e/local.e2e.mjs e2e/pages.e2e.mjs",
     "setup": "npm install && npm install --prefix server && npm install --prefix client",
     "lint": "npm run lint --prefix client"
   },

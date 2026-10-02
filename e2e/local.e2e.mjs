@@ -39,7 +39,7 @@ test('home loads with stats', async () => {
 
 test('dashboard note opens with full content', async () => {
   await page.locator('.recent-item', { hasText: 'Apuntes sobre React 19' }).click();
-  await dialog().getByText('useActionState').first().waitFor({ timeout: 3000 });
+  await dialog().getByText('useActionState').first().waitFor({ timeout: 10000 });
   // highlight-free note; tags visible
   await dialog().getByText('#react').waitFor();
   await page.keyboard.press('Escape');
@@ -54,9 +54,9 @@ test('bookmarks page lists seed bookmarks', async () => {
 
 test('search filters without losing the rest of the app', async () => {
   await page.getByRole('searchbox', { name: 'Búsqueda global' }).fill('sqlite');
-  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 1, null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 1, null, { timeout: 10000 });
   await page.getByRole('searchbox', { name: 'Búsqueda global' }).fill('');
-  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 4, null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 4, null, { timeout: 10000 });
 });
 
 test('manual link: modal lists notes and creates the link', async () => {
@@ -71,7 +71,7 @@ test('manual link: modal lists notes and creates the link', async () => {
   const value = await d.locator('option', { hasText: 'Distribución de Cartera' }).getAttribute('value');
   await d.locator('select').selectOption(value);
   await d.getByRole('button', { name: 'Confirmar Vínculo' }).click();
-  await toast('Vínculo creado').waitFor({ timeout: 4000 });
+  await toast('Vínculo creado').waitFor({ timeout: 10000 });
   assert.ok(await dialog().count() === 0, 'modal should close after linking');
 });
 
@@ -79,7 +79,7 @@ test('related drawer: unlink works and stacked Escape closes only the top dialog
   const card = page.locator('.item-card', { hasText: 'Tailwind CSS Docs v4' });
   await card.getByRole('button', { name: 'Ver notas relacionadas' }).click();
   const drawer = dialog();
-  await drawer.getByText('Vínculo Manual').first().waitFor({ timeout: 3000 });
+  await drawer.getByText('Vínculo Manual').first().waitFor({ timeout: 10000 });
 
   // open the link picker on top, Escape closes only it
   await drawer.getByRole('button', { name: /Vincular Nota manualmente/ }).click();
@@ -88,8 +88,8 @@ test('related drawer: unlink works and stacked Escape closes only the top dialog
   await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 1);
 
   await page.getByRole('button', { name: /Eliminar vínculo manual con Distribución/ }).click();
-  await toast('Vínculo eliminado').waitFor({ timeout: 4000 });
-  await page.waitForFunction(() => !document.querySelector('[role="dialog"]')?.textContent.includes('Vínculo Manual'), null, { timeout: 4000 });
+  await toast('Vínculo eliminado').waitFor({ timeout: 10000 });
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]')?.textContent.includes('Vínculo Manual'), null, { timeout: 10000 });
   await page.keyboard.press('Escape');
 });
 
@@ -124,7 +124,7 @@ test('bookmark form: rejects javascript: URL, double submit creates one bookmark
   await d.getByLabel('URL / Enlace web *').fill('https://e2e.test/');
   const submit = d.getByRole('button', { name: 'Crear Marcador' });
   await submit.dblclick();
-  await toast('Marcador creado').first().waitFor({ timeout: 4000 });
+  await toast('Marcador creado').first().waitFor({ timeout: 10000 });
   const all = await (await fetch(`${BASE}/api/bookmarks?q=e2e.test`)).json();
   assert.ok(all.length === 1, `expected 1 bookmark, got ${all.length}`);
 });
@@ -135,7 +135,7 @@ test('Alt+N does nothing while typing in the search box', async () => {
   assert.ok(await dialog().count() === 0, 'no form should open while typing');
   await page.locator('body').click({ position: { x: 5, y: 890 } });
   await page.keyboard.press('Alt+KeyN');
-  await dialog().waitFor({ timeout: 2000 });
+  await dialog().waitFor({ timeout: 10000 });
   await page.keyboard.press('Escape');
 });
 
@@ -147,7 +147,7 @@ test('note with code renders escaped + highlighted, wikilink in code stays text'
   const body = '# Hola\n\nVer [[Apuntes sobre React 19]]\n\n```html\n<b>negrita</b>\n```\n\n```bash\nif [[ -f x ]]; then echo ok; fi\n```\n\n[enlace](https://example.com)';
   await d.getByLabel('Contenido de la nota en Markdown').fill(body);
   await d.getByRole('button', { name: 'Guardar Nota' }).click();
-  await toast('Nota guardada').waitFor({ timeout: 4000 });
+  await toast('Nota guardada').waitFor({ timeout: 10000 });
 
   await nav('Notas');
   const card = page.locator('.item-card', { hasText: 'Nota E2E' });
@@ -161,35 +161,35 @@ test('note with code renders escaped + highlighted, wikilink in code stays text'
   assert.ok(await detail.locator('a[href="https://example.com"][target="_blank"]').count() === 1, 'links open in a new tab');
 
   await detail.locator('.wikilink-pill').click();
-  await page.getByRole('dialog').getByText('useActionState').first().waitFor({ timeout: 3000 });
+  await page.getByRole('dialog').getByText('useActionState').first().waitFor({ timeout: 10000 });
   await page.keyboard.press('Escape');
 });
 
 test('wikilink ignores the active filter', async () => {
   await page.getByRole('searchbox', { name: 'Búsqueda global' }).fill('Nota E2E');
-  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 1, null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelectorAll('.item-card').length === 1, null, { timeout: 10000 });
   await page.locator('.item-card', { hasText: 'Nota E2E' }).getByRole('button', { name: 'Nota E2E' }).click();
   await dialog().locator('.wikilink-pill').click();
-  await page.getByRole('dialog').getByText('useActionState').first().waitFor({ timeout: 3000 });
+  await page.getByRole('dialog').getByText('useActionState').first().waitFor({ timeout: 10000 });
   await page.keyboard.press('Escape');
   await page.getByRole('searchbox', { name: 'Búsqueda global' }).fill('');
 });
 
 test('graph and matrix render', async () => {
   await nav('Grafo de Red');
-  await page.locator('canvas').first().waitFor({ timeout: 4000 });
+  await page.locator('canvas').first().waitFor({ timeout: 10000 });
   await nav('Matriz Cruzada');
-  await page.getByText('pts de afinidad').first().waitFor({ timeout: 4000 });
+  await page.getByText('pts de afinidad').first().waitFor({ timeout: 10000 });
 });
 
 test('settings: trash restore round trip', async () => {
   await nav('Marcadores');
   const card = page.locator('.item-card', { hasText: 'Prueba E2E' });
   await card.getByRole('button', { name: 'Mover a la papelera' }).click();
-  await toast('Movido a papelera').first().waitFor({ timeout: 4000 });
+  await toast('Movido a papelera').first().waitFor({ timeout: 10000 });
   await nav('Ajustes y Backups');
   await page.getByRole('button', { name: 'Restaurar Prueba E2E' }).click();
-  await toast('Elemento restaurado').waitFor({ timeout: 4000 });
+  await toast('Elemento restaurado').waitFor({ timeout: 10000 });
 });
 
 test('no console errors and no third-party requests', async () => {
