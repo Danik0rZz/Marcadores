@@ -32,6 +32,11 @@ function browserDatabase() {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), browserDatabase()],
+  // Which API backend the client uses. Set here, not in an .env file: .env*
+  // files are git-ignored, and CI must build the same thing as a local run.
+  define: {
+    'import.meta.env.VITE_BACKEND': JSON.stringify(mode === 'pages' ? 'browser' : 'server')
+  },
   // Pages serves the app from /<repo>/: relative asset paths work anywhere.
   base: mode === 'pages' ? './' : '/',
   build: {
