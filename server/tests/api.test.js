@@ -20,6 +20,8 @@ import {
   normalizeImportNote
 } from '../itemValidation.js';
 import { localOnly } from '../localOnly.js';
+import { findIconLinks } from '../faviconService.js';
+import http from 'node:http';
 import { parseNetscapeBookmarks, decodeHtmlEntities } from '../netscapeParser.js';
 
 test('Database and seed items exist', () => {
@@ -1018,4 +1020,62 @@ test('Search treats % and _ literally', async () => {
   } finally {
     cleanupRouteRows({ bookmarkIds: [a, b] });
   }
+});
+
+/* =========================================================================
+   FAVICON PROXY
+   ========================================================================= */
+
+test('findIconLinks prefers rel=icon over apple-touch-icon and resolves relative URLs', () => {
+  const html = `
+    <link rel="apple-touch-icon" href="/apple.png">
+    <link href='/img/fav.svg?v=1&amp;x=2' rel="shortcut icon">
+    <link rel="stylesheet" href="/style.css">`;
+  assert.deepEqual(findIconLinks(html, 'https://site.test/page'), [
+    'https://site.test/img/fav.svg?v=1&x=2',
+    'https://site.test/apple.png'
+  ]);
+});
+
+test('GET /api/favicon fetches the icon from the site itself, caches it and answers 204 when missing', async () => {
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  let hits = 0;
+  const site = http.createServer((req, res) => {
+    hits++;
+    if (req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><head><link rel="icon" href="/brand.png"></head></html>');
+    } else if (req.url === '/brand.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(PNG);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise(resolve => site.listen(0, '127.0.0.1', resolve));
+  const siteUrl = `http://127.0.0.1:${site.address().port}`;
+
+  try {
+    const first = await fetch(`${apiBaseUrl}/api/favicon?url=${encodeURIComponent(`${siteUrl}/some/page`)}`);
+    assert.equal(first.status, 200);
+    assert.equal(first.headers.get('content-type'), 'image/png');
+    assert.match(first.headers.get('content-security-policy'), /sandbox/);
+    assert.deepEqual(Buffer.from(await first.arrayBuffer()), PNG);
+
+    const hitsAfterFirst = hits;
+    const second = await fetch(`${apiBaseUrl}/api/favicon?url=${encodeURIComponent(siteUrl)}`);
+    assert.equal(second.status, 200);
+    assert.equal(hits, hitsAfterFirst, 'La segunda petición sale de la caché');
+  } finally {
+    site.closeAllConnections();
+    await new Promise(resolve => site.close(resolve));
+  }
+
+  // The site is gone now: a fresh origin with no icon answers 204.
+  const missing = await fetch(`${apiBaseUrl}/api/favicon?url=${encodeURIComponent('http://127.0.0.1:9/')}`);
+  assert.equal(missing.status, 204);
+
+  const invalid = await fetch(`${apiBaseUrl}/api/favicon?url=${encodeURIComponent('javascript:alert(1)')}`);
+  assert.equal(invalid.status, 400);
 });

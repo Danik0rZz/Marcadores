@@ -25,3 +25,6 @@ Thumbs.db
 desktop.ini
 *.log
 npm-debug.log*
+
+# Favicon cache (rebuilt automatically)
+data/favicons/

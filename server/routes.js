@@ -1,5 +1,6 @@
 import express from 'express';
-import { db } from './db.js';
+import path from 'path';
+import { db, dbPath } from './db.js';
 import {
   getItemTags,
   getItemTagsBatch,
@@ -11,6 +12,8 @@ import {
 } from './matchingService.js';
 import { buildTaxonomyPayload } from './taxonomyService.js';
 import { parseNetscapeBookmarks, decodeHtmlEntities } from './netscapeParser.js';
+import { createFaviconCache } from './faviconService.js';
+import { fetchWithTimeout, readBodyUpTo } from './fetchUtils.js';
 import {
   resolveBookmarkInput,
   resolveNoteInput,
@@ -27,13 +30,9 @@ function likeTerm(q) {
   return `%${q.trim().replace(/[\\%_]/g, ch => `\\${ch}`)}%`;
 }
 
-function googleFavicon(url) {
-  try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
-  } catch {
-    return '';
-  }
-}
+// Favicons are served by GET /api/favicon (fetched from the site itself and
+// cached next to the database), so nothing is stored per bookmark.
+const getFavicon = createFaviconCache(path.join(path.dirname(dbPath), 'favicons'));
 
 // Backup timestamps are trusted only if they parse as dates.
 function importTimestamp(value, fallback) {
@@ -262,7 +261,6 @@ router.post('/bookmarks', (req, res) => {
     const { title, url, description, category, subcategory, theme, favicon, color, icon } = resolved.values;
 
     const now = new Date().toISOString();
-    const autoFavicon = favicon || googleFavicon(url);
 
     const insert = db.prepare(`
       INSERT INTO bookmarks (title, url, description, category, subcategory, theme, favicon, color, icon, created_at, updated_at)
@@ -278,7 +276,7 @@ router.post('/bookmarks', (req, res) => {
         category,
         subcategory,
         theme,
-        autoFavicon,
+        favicon,
         color,
         icon,
         now,
@@ -818,23 +816,8 @@ router.post('/backup/import', (req, res) => {
    METADATA EXTRACTOR (OPENGRAPH & TITLE)
    ========================================================================= */
 
-// Title and description live in <head>; reading the first 512 KB is plenty and
-// stops a link to a huge file from being loaded into memory.
+// Title and description live in <head>; reading the first 512 KB is plenty.
 const METADATA_MAX_BYTES = 512 * 1024;
-
-async function readTextUpTo(response, maxBytes) {
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
-  while (received < maxBytes) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-  }
-  await reader.cancel().catch(() => {});
-  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, maxBytes));
-}
 
 router.post('/bookmarks/metadata', async (req, res) => {
   try {
@@ -848,19 +831,13 @@ router.post('/bookmarks/metadata', async (req, res) => {
 
     let title = '';
     let description = '';
-    const favicon = googleFavicon(url);
 
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(5000),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      });
+      const response = await fetchWithTimeout(url);
 
       const contentType = response.headers.get('content-type') || '';
       if (response.ok && contentType.includes('html')) {
-        const html = await readTextUpTo(response, METADATA_MAX_BYTES);
+        const html = (await readBodyUpTo(response, METADATA_MAX_BYTES)).buffer.toString('utf8');
 
         // Extract title
         const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
@@ -891,9 +868,38 @@ router.post('/bookmarks/metadata', async (req, res) => {
 
     res.json({
       title: decodeHtmlEntities(title).trim(),
-      description: decodeHtmlEntities(description).trim(),
-      favicon
+      description: decodeHtmlEntities(description).trim()
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================================================================
+   FAVICON PROXY
+   ========================================================================= */
+
+router.get('/favicon', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (typeof url !== 'string' || !isWebUrl(url)) {
+      return res.status(400).json({ error: 'URL inválida' });
+    }
+
+    const icon = await getFavicon(url);
+    // 204 instead of 404: <img> falls back to the default icon without
+    // logging an error per bookmark in the browser console.
+    if (!icon) return res.set('Cache-Control', 'public, max-age=86400').status(204).end();
+
+    res.set({
+      'Content-Type': icon.contentType,
+      'Cache-Control': 'public, max-age=604800',
+      // Third-party bytes served from our origin: an SVG must never run script
+      // even if someone opens this URL directly.
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.send(icon.buffer);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -911,11 +917,7 @@ router.post('/bookmarks/check-health', async (req, res) => {
 
     const startTime = Date.now();
     try {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(5000),
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
+      const response = await fetchWithTimeout(url, { method: 'HEAD' });
       const latency = Date.now() - startTime;
       res.json({
         alive: response.ok || response.status < 400,
@@ -926,12 +928,9 @@ router.post('/bookmarks/check-health', async (req, res) => {
     } catch {
       // Retry with GET if HEAD was rejected
       try {
-        const getRes = await fetch(url, {
-          method: 'GET',
-          signal: AbortSignal.timeout(5000),
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
+        const getRes = await fetchWithTimeout(url);
         const latency = Date.now() - startTime;
+        await getRes.body?.cancel(); // only the status matters
         res.json({
           alive: getRes.ok || getRes.status < 400,
           status: getRes.status,
@@ -993,7 +992,7 @@ router.post('/backup/import-html', (req, res) => {
           resolvedCategory,
           bm.folder || 'Importados', // the browser folder becomes the subcategory
           'Referencia Web',
-          googleFavicon(bm.url),
+          '',
           '#10b981',
           'bookmark',
           bm.addedAt || now,

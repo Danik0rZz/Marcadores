@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // DB_PATH lets tests (and anyone else) point at a different database file.
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db');
+export const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db');
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 export const db = new Database(dbPath);
