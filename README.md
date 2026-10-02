@@ -48,6 +48,17 @@ Una pestaña dedicada para explorar todas las interconexiones del sistema en una
 
 ## 🏁 Cómo Iniciar la Aplicación
 
+### 0. Requisitos e Instalación
+Necesitás **Node.js 20.19 o superior**. El proyecto tiene dependencias en la raíz, en `server/` y en `client/`:
+
+```bash
+git clone <url-del-repositorio>
+cd <carpeta-del-repositorio>
+npm install
+npm install --prefix server
+npm install --prefix client
+```
+
 ### 1. Modo Desarrollo (Recomendado para trabajar)
 Ejecuta simultáneamente el backend en `http://localhost:3001` y el frontend en `http://localhost:5173`:
 
@@ -102,8 +113,8 @@ npm test
 │   ├── index.js                # Servidor Express
 │   └── tests/
 │       └── api.test.js         # Suite de pruebas automatizadas
-├── data/                       # Almacenamiento local persistente SQLite
-│   └── app.db                  # Base de datos SQLite
+├── data/                       # SQLite local (se crea al iniciar; no se versiona)
+│   └── app.db                  # Tus datos personales: excluido por .gitignore
 ├── package.json                # Scripts raíz (dev, build, start, test)
 └── README.md                   # Documentación técnica
 ```
