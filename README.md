@@ -84,6 +84,22 @@ Abrí tu navegador en **`http://localhost:3001`**.
 npm test
 ```
 
+Las pruebas usan una base de datos temporal: nunca tocan `data/app.db`.
+
+### Configuración y Seguridad
+
+La API no tiene autenticación, así que está pensada para uso **solo local**:
+
+- Escucha únicamente en `127.0.0.1`, de modo que no es accesible desde otros equipos de la red.
+- Rechaza peticiones con un `Host` u `Origin` que no sea local. Así, ninguna página web abierta en el navegador puede leer ni borrar tus datos.
+- Solo se aceptan URLs `http://` y `https://`.
+
+| Variable  | Por defecto      | Uso                              |
+|-----------|------------------|----------------------------------|
+| `PORT`    | `3001`           | Puerto del servidor              |
+| `HOST`    | `127.0.0.1`      | Interfaz de red donde escucha    |
+| `DB_PATH` | `data/app.db`    | Ruta del archivo SQLite          |
+
 ---
 
 ## 📂 Estructura del Proyecto

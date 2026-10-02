@@ -19,6 +19,7 @@ import {
   normalizeImportBookmark,
   normalizeImportNote
 } from '../itemValidation.js';
+import { localOnly } from '../localOnly.js';
 
 test('Database and seed items exist', () => {
   const bookmarks = db.prepare('SELECT COUNT(*) as count FROM bookmarks').get();
@@ -626,6 +627,8 @@ after(async () => {
     // fetch keeps sockets alive: drop idle connections so the runner can exit.
     httpServer.closeIdleConnections();
   });
+  // Release the file so tests/setup.js can delete the throwaway database.
+  db.close();
 });
 
 function insertRouteBookmark(title, url) {
@@ -836,3 +839,61 @@ test('DELETE /api/trash empties the bin, dropping trashed links and keeping live
   }
 });
 
+/* =========================================================================
+   URL SAFETY, LOCAL-ONLY GUARD AND ONE-TIME SEED
+   ========================================================================= */
+
+test('resolveBookmarkInput rejects non-http(s) URLs', () => {
+  for (const url of ['javascript:alert(1)', 'data:text/html,<b>x</b>', 'file:///etc/passwd', 'not a url']) {
+    const result = resolveBookmarkInput({ title: 'X', url, category: 'Y' });
+    assert.equal(result.ok, false, `Debe rechazar ${url}`);
+  }
+  assert.equal(resolveBookmarkInput({ title: 'X', url: 'http://ok.test', category: 'Y' }).ok, true);
+});
+
+test('normalizeImportBookmark clears unsafe URLs instead of dropping the row', () => {
+  assert.equal(normalizeImportBookmark({ title: 'X', url: 'javascript:alert(1)' }).url, '');
+  assert.equal(normalizeImportBookmark({ title: 'X', url: ' https://ok.test ' }).url, 'https://ok.test');
+});
+
+test('URL-fetching routes reject non-http(s) URLs', async () => {
+  for (const route of ['/api/bookmarks/metadata', '/api/bookmarks/check-health']) {
+    const res = await fetch(`${apiBaseUrl}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'file:///etc/passwd' })
+    });
+    assert.equal(res.status, 400, `${route} debe responder 400`);
+  }
+});
+
+function runLocalOnly(headers) {
+  let status = null;
+  let nextCalled = false;
+  const res = { status(code) { status = code; return { json() {} }; } };
+  localOnly({ headers }, res, () => { nextCalled = true; });
+  return { status, nextCalled };
+}
+
+test('localOnly accepts local host and origin, rejects foreign ones', () => {
+  assert.equal(runLocalOnly({ host: '127.0.0.1:3001' }).nextCalled, true);
+  assert.equal(runLocalOnly({ host: 'localhost:3001', origin: 'http://localhost:5173' }).nextCalled, true);
+  assert.equal(runLocalOnly({ host: '[::1]:3001' }).nextCalled, true);
+  assert.equal(runLocalOnly({ host: 'evil.example:3001' }).status, 403, 'DNS rebinding');
+  assert.equal(runLocalOnly({ host: '127.0.0.1:3001', origin: 'https://evil.example' }).status, 403, 'Cross-site');
+  assert.equal(runLocalOnly({ host: '127.0.0.1:3001', origin: 'null' }).status, 403, 'Opaque origin');
+});
+
+test('Sample data is seeded only once, never after the user empties the library', () => {
+  assert.equal(db.pragma('user_version', { simple: true }), 1, 'initDb debe marcar la base como inicializada');
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM manual_relations').run();
+    db.prepare('DELETE FROM bookmarks').run();
+    db.prepare('DELETE FROM notes').run();
+    initDb();
+    assert.equal(db.prepare('SELECT COUNT(*) as c FROM bookmarks').get().c, 0, 'No debe volver a sembrar');
+  } finally {
+    db.exec('ROLLBACK');
+  }
+});

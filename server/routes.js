@@ -14,7 +14,8 @@ import {
   resolveBookmarkInput,
   resolveNoteInput,
   normalizeImportBookmark,
-  normalizeImportNote
+  normalizeImportNote,
+  isWebUrl
 } from './itemValidation.js';
 
 const router = express.Router();
@@ -820,12 +821,10 @@ router.post('/bookmarks/metadata', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL es requerida' });
 
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
+    if (!isWebUrl(url)) {
       return res.status(400).json({ error: 'URL inválida' });
     }
+    const parsedUrl = new URL(url);
 
     let title = '';
     let description = '';
@@ -887,6 +886,7 @@ router.post('/bookmarks/check-health', async (req, res) => {
   try {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL requerida' });
+    if (!isWebUrl(url)) return res.status(400).json({ error: 'URL inválida' });
 
     const startTime = Date.now();
     try {

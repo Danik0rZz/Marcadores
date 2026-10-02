@@ -78,6 +78,22 @@ function resolveFields(source, existing, fields, labels, emptyDefaults) {
 }
 
 /**
+ * Only http(s) URLs may be stored: the client opens bookmark URLs with
+ * window.open/href, so a javascript: or data: URL would run code on click.
+ *
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isWebUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * @param {object} body request body
  * @param {object|null} existing current row for partial updates
  * @returns {{ok: true, values: object} | {ok: false, error: string}}
@@ -96,6 +112,9 @@ export function resolveBookmarkInput(body = {}, existing = null) {
   const { title, url, category } = result.values;
   if (!title || !url || !category) {
     return { ok: false, error: 'Título, URL y Categoría son requeridos' };
+  }
+  if (!isWebUrl(url)) {
+    return { ok: false, error: 'La URL debe empezar con http:// o https://' };
   }
 
   return { ok: true, values: result.values };
@@ -159,7 +178,8 @@ export function normalizeImportBookmark(row = {}) {
   const theme = source.theme ?? source.reason;
   return {
     title: trimImportText(source.title) || 'Sin título',
-    url: trimImportText(source.url),
+    // An unsafe or malformed URL is cleared rather than dropping the row.
+    url: isWebUrl(trimImportText(source.url)) ? trimImportText(source.url) : '',
     description: trimImportText(source.description),
     category: trimImportText(source.category) || 'General',
     subcategory: trimImportText(source.subcategory),

@@ -6,11 +6,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test tests/api.test.js"
+    "test": "node --import ./tests/setup.js --test tests/api.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "cors": "^2.8.5",
     "express": "^4.21.2"
   }
 }

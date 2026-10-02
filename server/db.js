@@ -6,12 +6,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dataDir = path.join(__dirname, '..', 'data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+// DB_PATH lets tests (and anyone else) point at a different database file.
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db');
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-const dbPath = path.join(dataDir, 'app.db');
 export const db = new Database(dbPath);
 
 // Enable WAL mode, foreign keys and performance optimizations
@@ -88,10 +86,16 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_notes_del ON notes(deleted_at);
   `);
 
-  // Check if we should seed sample data
-  const countStmt = db.prepare('SELECT COUNT(*) as count FROM bookmarks').get();
-  if (countStmt.count === 0) {
-    seedSampleData();
+  // Seed sample data only the first time a database is initialized. user_version
+  // marks it as done, so a library the user emptied stays empty after a restart.
+  if (db.pragma('user_version', { simple: true }) === 0) {
+    const hasData =
+      db.prepare('SELECT 1 FROM bookmarks LIMIT 1').get() ||
+      db.prepare('SELECT 1 FROM notes LIMIT 1').get();
+    if (!hasData) {
+      seedSampleData();
+    }
+    db.pragma('user_version = 1');
   }
 }
 
