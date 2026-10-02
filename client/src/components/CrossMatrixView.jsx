@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import { 
-  GitMerge, 
-  Bookmark, 
-  FileText, 
-  CheckCircle2, 
-  ArrowRightLeft, 
-  ExternalLink, 
-  Search, 
+import {
+  GitMerge,
+  Bookmark,
+  FileText,
+  CheckCircle2,
+  ArrowRightLeft,
+  Search,
   Link2,
-  Trash2,
-  Layers,
-  Tag as TagIcon
+  Trash2
 } from 'lucide-react';
 
 export default function CrossMatrixView({
@@ -119,7 +116,7 @@ export default function CrossMatrixView({
               className="bg-slate-800/60 hover:bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 transition-all duration-150"
             >
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                
+
                 {/* Left: Bookmark */}
                 <div className="md:col-span-4 bg-slate-900/70 p-3 rounded-lg border border-slate-700/50">
                   <div className="flex items-center justify-between text-[11px] text-cyan-400 font-semibold mb-1">
@@ -131,7 +128,9 @@ export default function CrossMatrixView({
                     </span>
                   </div>
                   <h4 className="text-sm font-semibold text-white truncate">
-                    {rel.bookmarkTitle}
+                    <button type="button" onClick={() => onNavigateToBookmark(rel.bookmarkId)} className="hover:underline text-left">
+                      {rel.bookmarkTitle}
+                    </button>
                   </h4>
                 </div>
 
@@ -162,6 +161,7 @@ export default function CrossMatrixView({
 
                   {rel.relationship.isManual && (
                     <button
+                      type="button"
                       onClick={() => onUnlinkManual(rel.bookmarkId, rel.noteId)}
                       className="mt-2 text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1"
                     >
@@ -181,7 +181,9 @@ export default function CrossMatrixView({
                     </span>
                   </div>
                   <h4 className="text-sm font-semibold text-white truncate">
-                    {rel.noteTitle}
+                    <button type="button" onClick={() => onNavigateToNote(rel.noteId)} className="hover:underline text-left">
+                      {rel.noteTitle}
+                    </button>
                   </h4>
                 </div>
 

@@ -32,7 +32,7 @@ body {
     var(--bg);
   background-size: auto, 42px 42px, 42px 42px, auto;
   color: var(--text);
-  font: 400 15px/1.5 Outfit, system-ui, -apple-system, sans-serif;
+  font: 400 15px/1.5 "Outfit Variable", Outfit, system-ui, -apple-system, sans-serif;
   overflow-x: auto;
 }
 
@@ -105,7 +105,7 @@ a { color: inherit; }
 .brand-mark:active { transform: scale(.94); }
 
 .brand-copy strong { display: block; font-size: 16px; letter-spacing: -.02em; }
-.brand-copy span { display: block; margin-top: -2px; color: var(--muted-2); font: 400 10px/1.4 "JetBrains Mono", monospace; }
+.brand-copy span { display: block; margin-top: -2px; color: var(--muted-2); font: 400 10px/1.4 "JetBrains Mono Variable", "JetBrains Mono", monospace; }
 
 .sidebar-collapsed .brand-copy,
 .sidebar-collapsed .nav-copy,
@@ -157,7 +157,7 @@ a { color: inherit; }
   padding: 0 6px;
   text-align: center;
   color: var(--muted-2);
-  font: 500 11px/20px "JetBrains Mono", monospace;
+  font: 500 11px/20px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   background: rgba(255,255,255,.04);
   border-radius: 999px;
   transition: opacity .15s;
@@ -190,7 +190,7 @@ a { color: inherit; }
   white-space: nowrap;
   letter-spacing: .04em;
 }
-.tree-head span:last-child { margin-left: auto; font: 400 9px "JetBrains Mono", monospace; }
+.tree-head span:last-child { margin-left: auto; font: 400 9px "JetBrains Mono Variable", "JetBrains Mono", monospace; }
 
 .tree-list { display: grid; gap: 3px; }
 .tree-row {
@@ -260,7 +260,7 @@ a { color: inherit; }
   border-radius: 999px;
   color: #8e8e98;
   background: rgba(255,255,255,.05);
-  font: 500 10.5px/18px "JetBrains Mono", monospace;
+  font: 500 10.5px/18px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   text-align: center;
 }
 .tree-link.active .tree-count {
@@ -457,7 +457,7 @@ a { color: inherit; }
   border: 1px solid var(--line);
   border-radius: 7px;
   color: var(--muted-2);
-  font: 500 10px/24px "JetBrains Mono", monospace;
+  font: 500 10px/24px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   pointer-events: none;
 }
 .topbar-actions {
@@ -541,7 +541,7 @@ a { color: inherit; }
 .icon-button svg, .button svg { pointer-events: none; }
 
 .kbd-hint {
-  font: 500 10px "JetBrains Mono", monospace;
+  font: 500 10px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   padding: 2px 6px;
   border-radius: 5px;
   background: rgba(255,255,255,.08);
@@ -574,7 +574,7 @@ a { color: inherit; }
 }
 .eyebrow {
   color: #6ee7b7;
-  font: 500 10px/1.4 "JetBrains Mono", monospace;
+  font: 500 10px/1.4 "JetBrains Mono Variable", "JetBrains Mono", monospace;
   letter-spacing: .12em;
   margin-bottom: 6px;
 }
@@ -651,7 +651,7 @@ a { color: inherit; }
 
 .result-count {
   color: #8e8e98;
-  font: 500 11px/1 "JetBrains Mono", monospace;
+  font: 500 11px/1 "JetBrains Mono Variable", "JetBrains Mono", monospace;
   padding: 0 7px;
 }
 
@@ -696,7 +696,7 @@ a { color: inherit; }
 .metric-label svg { color: #6ee7b7; }
 .metric-value {
   margin-top: 16px;
-  font: 500 30px/1 "JetBrains Mono", monospace;
+  font: 500 30px/1 "JetBrains Mono Variable", "JetBrains Mono", monospace;
   letter-spacing: -.045em;
 }
 .metric-note { margin-top: 10px; color: var(--muted-2); font-size: 12px; }
@@ -722,7 +722,7 @@ a { color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .panel-title { font-weight: 600; letter-spacing: -.01em; }
-.panel-meta { margin-left: auto; color: var(--muted-2); font: 400 10px "JetBrains Mono", monospace; }
+.panel-meta { margin-left: auto; color: var(--muted-2); font: 400 10px "JetBrains Mono Variable", "JetBrains Mono", monospace; }
 
 .breakdown { padding: 8px 18px 14px; }
 .breakdown-row {
@@ -737,7 +737,7 @@ a { color: inherit; }
 .breakdown-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .bar-track { height: 5px; border-radius: 99px; background: #27272a; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: inherit; background: var(--emerald); opacity: .75; }
-.breakdown-count { text-align: right; color: var(--muted); font: 500 11px "JetBrains Mono", monospace; }
+.breakdown-count { text-align: right; color: var(--muted); font: 500 11px "JetBrains Mono Variable", "JetBrains Mono", monospace; }
 
 .recent-list { padding: 4px 18px 10px; }
 .recent-item {
@@ -872,6 +872,32 @@ a { color: inherit; }
   transition: transform .26s var(--ease), color .2s;
 }
 .item-card:hover .card-title { transform: translateX(2px); color: #fff; }
+/* Title as a real link/button: looks like plain text, focusable by keyboard */
+.card-title-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-decoration: none;
+  display: inline-block;
+  vertical-align: bottom;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+.card-title-link:focus-visible {
+  outline: 2px solid var(--accent, #10b981);
+  outline-offset: 2px;
+}
+.item-card:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .card-taxonomy {
   min-width: 0;
   margin-top: 5px;
@@ -907,7 +933,7 @@ a { color: inherit; }
   color: #c4c4cc;
   background: rgba(255,255,255,.05);
   border: 1px solid rgba(255,255,255,.07);
-  font: 400 11px "JetBrains Mono", monospace;
+  font: 400 11px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   white-space: nowrap;
 }
 .card-footer {
@@ -921,7 +947,7 @@ a { color: inherit; }
   min-width: 0;
   flex: 1;
   color: #8e8e98;
-  font: 400 11px "JetBrains Mono", monospace;
+  font: 400 11px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -960,7 +986,7 @@ a { color: inherit; }
   color: var(--muted-2);
   border-bottom: 1px solid var(--line);
   background: rgba(255,255,255,.018);
-  font: 500 10px "JetBrains Mono", monospace;
+  font: 500 10px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   letter-spacing: .05em;
 }
 .grid-item {
@@ -1049,7 +1075,7 @@ a { color: inherit; }
 .detail-label {
   margin-bottom: 6px;
   color: #8e8e98;
-  font: 500 11px "JetBrains Mono", monospace;
+  font: 500 11px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   letter-spacing: .06em;
 }
 .detail-copy {
@@ -1061,7 +1087,7 @@ a { color: inherit; }
 }
 .detail-url {
   color: #6ee7b7;
-  font: 400 11px/1.5 "JetBrains Mono", monospace;
+  font: 400 11px/1.5 "JetBrains Mono Variable", "JetBrains Mono", monospace;
   overflow-wrap: anywhere;
 }
 .mini-list { min-width: 0; display: grid; gap: 6px; }
@@ -1265,7 +1291,7 @@ a { color: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 400 9px "JetBrains Mono", monospace;
+  font: 400 9px "JetBrains Mono Variable", "JetBrains Mono", monospace;
 }
 
 .color-spectrum { display: grid; gap: 8px; }
@@ -1373,7 +1399,7 @@ a { color: inherit; }
   outline: 0;
   color: #e4e4e7;
   background: #0d0d0f;
-  font: 400 13px/1.65 "JetBrains Mono", monospace;
+  font: 400 13px/1.65 "JetBrains Mono Variable", "JetBrains Mono", monospace;
   tab-size: 2;
 }
 
@@ -1403,7 +1429,7 @@ a { color: inherit; }
   color: #a7f3d0;
   background: rgba(16,185,129,.08);
   border: 1px solid rgba(16,185,129,.15);
-  font: 400 12px "JetBrains Mono", monospace;
+  font: 400 12px "JetBrains Mono Variable", "JetBrains Mono", monospace;
 }
 .markdown-preview pre {
   padding: 14px;
@@ -1425,7 +1451,7 @@ a { color: inherit; }
   position: absolute;
   top: 10px;
   left: 14px;
-  font: 500 10px "JetBrains Mono", monospace;
+  font: 500 10px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   color: var(--muted-2);
   letter-spacing: .05em;
   pointer-events: none;
@@ -1435,7 +1461,7 @@ a { color: inherit; }
   top: 8px;
   right: 8px;
   padding: 3px 8px;
-  font: 500 10.5px "JetBrains Mono", monospace;
+  font: 500 10.5px "JetBrains Mono Variable", "JetBrains Mono", monospace;
   color: var(--muted);
   background: #18181b;
   border: 1px solid var(--line);
@@ -1466,12 +1492,18 @@ a { color: inherit; }
   border: 1px solid rgba(16, 185, 129, 0.3);
   padding: 0.1rem 0.5rem;
   border-radius: 6px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "JetBrains Mono Variable", "JetBrains Mono", monospace;
   font-weight: 500;
   font-size: 0.85em;
+  line-height: inherit;
+  vertical-align: baseline;
   cursor: pointer;
   transition: all 0.18s var(--ease);
   text-decoration: none;
+}
+.wikilink-pill:focus-visible {
+  outline: 2px solid #34d399;
+  outline-offset: 2px;
 }
 .wikilink-pill:hover {
   background-color: rgba(16, 185, 129, 0.22);
@@ -1501,7 +1533,7 @@ a { color: inherit; }
   border-radius: 11px;
   background: rgba(9,9,11,.48);
 }
-.inspector-block h3 { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; color: #8e8e98; letter-spacing: .04em; font-family: "JetBrains Mono", monospace; }
+.inspector-block h3 { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; color: #8e8e98; letter-spacing: .04em; font-family: "JetBrains Mono Variable", "JetBrains Mono", monospace; }
 .inspector-block p { margin: 0; color: var(--text); font-size: 13px; }
 .note-reader {
   min-height: 400px;

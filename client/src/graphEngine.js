@@ -22,9 +22,9 @@ export const CENTER_GRAVITY = 0.005, DAMPING = 0.88, MAX_SPEED = 12;
 // Motion
 export const ENTRY_DURATION_MS = 420, ENTRY_STAGGER_MS = 18;
 export const FOCUS_DURATION_MS = 180, DIM_ALPHA = 0.22;
-export const LABEL_FONT = '11px Outfit, system-ui, sans-serif';
-export const LABEL_FONT_STRONG = '600 11px Outfit, system-ui, sans-serif';
-export const MONO_FONT = '10px "JetBrains Mono", monospace';
+export const LABEL_FONT = '11px "Outfit Variable", Outfit, system-ui, sans-serif';
+export const LABEL_FONT_STRONG = '600 11px "Outfit Variable", Outfit, system-ui, sans-serif';
+export const MONO_FONT = '10px "JetBrains Mono Variable", "JetBrains Mono", monospace';
 // Semantic pair kept app-wide: cyan = bookmark, indigo = note.
 export const TYPE_STYLE = {
   bookmark: { core: '#a5f3fc', mid: '#06b6d4', rim: '#0e7490', rgb: [6, 182, 212] },
@@ -266,7 +266,7 @@ export function createFaviconCache(invalidate) {
   const images = new Map();
   return {
     get(node) {
-      const src = node.url ? getFaviconUrl(node.url, node.favicon) : '';
+      const src = node.url ? getFaviconUrl(node.url) : '';
       if (!src) return null;
       let image = images.get(src);
       if (!image) {

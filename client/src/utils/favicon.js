@@ -1,19 +1,15 @@
 /**
- * Returns a robust favicon URL using Google's public favicon service as primary/fallback.
- * Google scans the real HTML <link rel="icon"> of the site, supports SVG/PNG/ICO and avoids 404s.
+ * Same-origin favicon URL for a bookmark. The server fetches the icon from
+ * the bookmarked site itself and caches it, so no third party (such as
+ * Google's favicon service) learns which sites are bookmarked.
+ * Keyed by origin so the browser caches one icon per site.
  */
-export function getFaviconUrl(url, existingFavicon) {
+export function getFaviconUrl(url) {
   try {
-    const parsed = new URL(url);
-    const domain = parsed.hostname;
-
-    // If existing favicon is already a valid specific custom link (not a broken /favicon.ico)
-    if (existingFavicon && !existingFavicon.endsWith('/favicon.ico')) {
-      return existingFavicon;
-    }
-
-    return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+    const { protocol, origin } = new URL(url);
+    if (protocol !== 'http:' && protocol !== 'https:') return '';
+    return `/api/favicon?url=${encodeURIComponent(origin)}`;
   } catch {
-    return existingFavicon || '';
+    return '';
   }
 }

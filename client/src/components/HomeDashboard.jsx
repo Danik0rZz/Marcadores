@@ -11,9 +11,7 @@ import {
 
 export default function HomeDashboard({
   stats,
-  onNavigateTab,
   onOpenNoteDetail,
-  onOpenBookmark,
   onOpenSettings
 }) {
   const categories = stats?.categoryBreakdown || [];

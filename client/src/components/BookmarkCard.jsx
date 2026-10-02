@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { 
-  Bookmark, 
-  GitMerge, 
-  Edit3, 
-  Trash2, 
+import {
+  Bookmark,
+  GitMerge,
+  Edit3,
+  Trash2,
   Plus,
   Activity,
   Loader2
 } from 'lucide-react';
 import { getFaviconUrl } from '../utils/favicon';
 import { checkBookmarkHealth } from '../api';
+
+function isInnerControl(event) {
+  const control = event.target.closest('a, button, input, textarea, select');
+  return control !== null && event.currentTarget.contains(control);
+}
 
 export default function BookmarkCard({
   bookmark,
@@ -21,7 +26,7 @@ export default function BookmarkCard({
   const [imgError, setImgError] = useState(false);
   const [healthStatus, setHealthStatus] = useState(null);
 
-  const faviconSrc = getFaviconUrl(bookmark.url, bookmark.favicon);
+  const faviconSrc = getFaviconUrl(bookmark.url);
   const accentColor = bookmark.color || '#10b981';
 
   let domain = '';
@@ -43,20 +48,22 @@ export default function BookmarkCard({
   };
 
   return (
-    <div 
-      className="item-card" 
+    <div
+      className="item-card"
       style={{ '--accent': accentColor }}
-      onClick={() => window.open(bookmark.url, '_blank', 'noopener,noreferrer')}
+      onClick={(e) => {
+        if (!isInnerControl(e)) window.open(bookmark.url, '_blank', 'noopener,noreferrer');
+      }}
     >
       <div className="card-top">
         {/* Symbol / Favicon */}
         <div className="item-symbol">
           {faviconSrc && !imgError ? (
-            <img 
-              src={faviconSrc} 
-              alt="" 
+            <img
+              src={faviconSrc}
+              alt=""
               onError={() => setImgError(true)}
-              className="card-favicon" 
+              className="card-favicon"
             />
           ) : (
             <Bookmark size={20} />
@@ -66,7 +73,10 @@ export default function BookmarkCard({
         {/* Heading */}
         <div className="card-heading">
           <h3 className="card-title" title={bookmark.title}>
-            {bookmark.title}
+            {/* The real link: keyboard, middle-click and "open in new tab" all work */}
+            <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="card-title-link">
+              {bookmark.title}
+            </a>
           </h3>
           <div className="card-taxonomy">
             <span>{bookmark.category}</span>
@@ -102,7 +112,7 @@ export default function BookmarkCard({
       </div>
 
       {/* Footer & Actions */}
-      <div className="card-footer" onClick={e => e.stopPropagation()}>
+      <div className="card-footer">
         <div className="card-meta">
           <span title={domain}>{domain}</span>
           {healthStatus && (
@@ -120,6 +130,7 @@ export default function BookmarkCard({
             disabled={healthStatus?.loading}
             className="icon-button"
             title="Comprobar enlace"
+            aria-label="Comprobar enlace"
           >
             {healthStatus?.loading ? (
               <Loader2 size={14} className="animate-spin text-emerald-400" />
@@ -134,6 +145,7 @@ export default function BookmarkCard({
             onClick={() => onViewRelated(bookmark)}
             className="icon-button"
             title="Ver notas relacionadas"
+            aria-label="Ver notas relacionadas"
           >
             <GitMerge size={14} />
           </button>
@@ -144,6 +156,7 @@ export default function BookmarkCard({
             onClick={() => onOpenManualLink(bookmark)}
             className="icon-button"
             title="Vincular con una nota"
+            aria-label="Vincular con una nota"
           >
             <Plus size={14} />
           </button>
@@ -154,6 +167,7 @@ export default function BookmarkCard({
             onClick={() => onEdit(bookmark)}
             className="icon-button"
             title="Editar marcador"
+            aria-label="Editar marcador"
           >
             <Edit3 size={14} />
           </button>
@@ -164,6 +178,7 @@ export default function BookmarkCard({
             onClick={() => onDelete(bookmark)}
             className="icon-button danger"
             title="Mover a la papelera"
+            aria-label="Mover a la papelera"
           >
             <Trash2 size={14} />
           </button>

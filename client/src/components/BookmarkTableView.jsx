@@ -1,9 +1,9 @@
 import React, { useState, memo } from 'react';
-import { 
-  ExternalLink, 
-  GitMerge, 
-  Edit3, 
-  Trash2, 
+import {
+  ExternalLink,
+  GitMerge,
+  Edit3,
+  Trash2,
   Plus,
   ChevronDown
 } from 'lucide-react';
@@ -19,34 +19,34 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
   onOpenManualLink
 }) {
   const [imgError, setImgError] = useState(false);
-  const faviconSrc = getFaviconUrl(bm.url, bm.favicon);
+  const faviconSrc = getFaviconUrl(bm.url);
   const accentColor = bm.color || '#10b981';
 
   return (
-    <div 
+    <div
       className={`grid-item bookmark-grid-item ${isExpanded ? 'expanded' : ''}`}
       style={{ '--accent': accentColor }}
     >
       {/* Main compact row */}
-      <div 
+      <div
         className="grid-row"
         onClick={onToggleExpand}
       >
         {/* Title cell */}
         <div className="grid-cell title-cell">
           {faviconSrc && !imgError ? (
-            <img 
-              src={faviconSrc} 
-              alt="" 
+            <img
+              src={faviconSrc}
+              alt=""
               onError={() => setImgError(true)}
-              className="bookmark-favicon" 
+              className="bookmark-favicon"
             />
           ) : (
             <span className="title-accent" />
           )}
-          <span className="title-text" title={bm.title}>
+          <button type="button" className="title-text card-title-link" title={bm.title} aria-expanded={isExpanded}>
             {bm.title}
-          </span>
+          </button>
         </div>
 
         {/* Category cell */}
@@ -75,6 +75,7 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             onClick={() => window.open(bm.url, '_blank', 'noopener,noreferrer')}
             className="icon-button"
             title="Abrir enlace"
+            aria-label="Abrir enlace"
           >
             <ExternalLink size={14} />
           </button>
@@ -83,6 +84,7 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             onClick={() => onViewRelated(bm)}
             className="icon-button"
             title="Ver notas relacionadas"
+            aria-label="Ver notas relacionadas"
           >
             <GitMerge size={14} />
           </button>
@@ -91,6 +93,7 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             onClick={() => onOpenManualLink(bm)}
             className="icon-button"
             title="Vincular con nota"
+            aria-label="Vincular con nota"
           >
             <Plus size={14} />
           </button>
@@ -99,6 +102,7 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             onClick={() => onEdit(bm)}
             className="icon-button"
             title="Editar"
+            aria-label="Editar"
           >
             <Edit3 size={14} />
           </button>
@@ -107,6 +111,7 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             onClick={() => onDelete(bm)}
             className="icon-button danger"
             title="Mover a papelera"
+            aria-label="Mover a papelera"
           >
             <Trash2 size={14} />
           </button>
@@ -136,10 +141,10 @@ const BookmarkGridRow = memo(function BookmarkGridRow({
             {/* Full URL */}
             <div>
               <div className="detail-label">URL completa</div>
-              <a 
-                className="detail-url flex items-center gap-1.5" 
-                href={bm.url} 
-                target="_blank" 
+              <a
+                className="detail-url flex items-center gap-1.5"
+                href={bm.url}
+                target="_blank"
                 rel="noopener noreferrer"
               >
                 <ExternalLink size={12} />

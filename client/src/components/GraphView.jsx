@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bookmark, FileText, Pause, Play, RotateCcw, Search, ZoomIn, ZoomOut } from 'lucide-react';
 import GraphInspector from './GraphInspector';
 import {
@@ -39,8 +39,12 @@ export default function GraphView({
   const [searchQuery, setSearchQuery] = useState('');
   const [showLabels, setShowLabels] = useState(true);
   const [isPhysicsRunning, setIsPhysicsRunning] = useState(true);
-  const [hoveredNode, setHoveredNode] = useState(null);
-  const [selectedNode, setSelectedNode] = useState(null);
+  // Ids, not node objects: each data refetch builds new node objects, and the
+  // nodes are looked up from the current graph during render.
+  const [hoveredId, setHoveredId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const setHoveredNode = useCallback((node) => setHoveredId(node ? node.id : null), []);
+  const setSelectedNode = useCallback((node) => setSelectedId(node ? node.id : null), []);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, visible: false });
 
   const simulationRef = useRef({ nodes: [], links: [], alpha: 0, frameId: null, dirty: true, focusRamp: 0, lastFrame: 0, generationKey: undefined, draggedNode: null });
@@ -68,6 +72,11 @@ export default function GraphView({
   );
 
   const counts = useMemo(() => computeCounts(filteredGraph), [filteredGraph]);
+
+  // A node filtered out or deleted simply resolves to null: no ghost inspector.
+  const nodeById = useMemo(() => new Map(filteredGraph.nodes.map((n) => [n.id, n])), [filteredGraph]);
+  const hoveredNode = nodeById.get(hoveredId) ?? null;
+  const selectedNode = nodeById.get(selectedId) ?? null;
 
   const neighborSet = useMemo(
     () => computeNeighborSet(filteredGraph, (hoveredNode || selectedNode)?.id ?? null),
@@ -503,12 +512,6 @@ export default function GraphView({
     // Only a real topology change re-heats the physics; a same-topology refetch
     // keeps the settled layout and just repaints.
     if (topologyChanged) sim.alpha = ALPHA_START;
-    // Reconcile selection and hover with the new generation: drop ids that no
-    // longer exist (filtered out or deleted) and repoint survivors at the current
-    // node object, so the inspector never shows a ghost or stale data.
-    const currentById = new Map(filteredGraph.nodes.map((n) => [n.id, n]));
-    setSelectedNode((prev) => (prev ? (currentById.get(prev.id) || null) : prev));
-    setHoveredNode((prev) => (prev ? (currentById.get(prev.id) || null) : prev));
     sim.dirty = true;
     invalidateRef.current();
   }, [filteredGraph]);
@@ -553,7 +556,7 @@ export default function GraphView({
     const handleKeyDown = (event) => { if (event.key === 'Escape') setSelectedNode(null); };
     shell.addEventListener('keydown', handleKeyDown);
     return () => shell.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNode]);
+  }, [selectedNode, setSelectedNode]);
 
   /* ------------------------------ interaction ------------------------------- */
 

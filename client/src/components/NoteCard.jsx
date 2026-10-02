@@ -1,13 +1,18 @@
 import React from 'react';
-import { 
-  FileText, 
-  GitMerge, 
-  Edit3, 
-  Trash2, 
+import {
+  FileText,
+  GitMerge,
+  Edit3,
+  Trash2,
   Plus,
   Maximize2
 } from 'lucide-react';
-import MarkdownViewer from './MarkdownViewer';
+import { markdownExcerpt } from '../utils/markdownText';
+
+function isInnerControl(event) {
+  const control = event.target.closest('a, button, input, textarea, select');
+  return control !== null && event.currentTarget.contains(control);
+}
 
 export default function NoteCard({
   note,
@@ -15,19 +20,20 @@ export default function NoteCard({
   onDelete,
   onViewRelated,
   onOpenManualLink,
-  onSelectNote,
-  onWikiLinkClick
+  onSelectNote
 }) {
   const accentColor = '#6366f1';
-  const formattedDate = note.updated_at 
+  const formattedDate = note.updated_at
     ? new Date(note.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
     : '';
 
   return (
-    <div 
-      className="item-card" 
+    <div
+      className="item-card"
       style={{ '--accent': accentColor }}
-      onClick={() => onSelectNote && onSelectNote(note)}
+      onClick={(e) => {
+        if (!isInnerControl(e)) onSelectNote(note);
+      }}
     >
       <div className="card-top">
         {/* Symbol */}
@@ -38,7 +44,9 @@ export default function NoteCard({
         {/* Heading */}
         <div className="card-heading">
           <h3 className="card-title" title={note.title}>
-            {note.title}
+            <button type="button" onClick={() => onSelectNote(note)} className="card-title-link">
+              {note.title}
+            </button>
           </h3>
           <div className="card-taxonomy">
             <span>{note.category}</span>
@@ -58,13 +66,8 @@ export default function NoteCard({
         </div>
       </div>
 
-      {/* Markdown snippet */}
-      <div className="card-description">
-        <MarkdownViewer 
-          content={note.content} 
-          onWikiLinkClick={onWikiLinkClick}
-        />
-      </div>
+      {/* Plain-text snippet; the full Markdown renders in the detail modal */}
+      <p className="card-description">{markdownExcerpt(note.content)}</p>
 
       {/* Tags */}
       <div className="tag-row">
@@ -77,7 +80,7 @@ export default function NoteCard({
       </div>
 
       {/* Footer & Actions */}
-      <div className="card-footer" onClick={e => e.stopPropagation()}>
+      <div className="card-footer">
         <div className="card-meta">
           <span>Actualizado {formattedDate}</span>
         </div>
@@ -86,9 +89,10 @@ export default function NoteCard({
           {/* Read detail modal */}
           <button
             type="button"
-            onClick={() => onSelectNote && onSelectNote(note)}
+            onClick={() => onSelectNote(note)}
             className="icon-button"
             title="Leer nota completa"
+            aria-label="Leer nota completa"
           >
             <Maximize2 size={14} />
           </button>
@@ -99,6 +103,7 @@ export default function NoteCard({
             onClick={() => onViewRelated(note)}
             className="icon-button"
             title="Ver marcadores relacionados"
+            aria-label="Ver marcadores relacionados"
           >
             <GitMerge size={14} />
           </button>
@@ -109,6 +114,7 @@ export default function NoteCard({
             onClick={() => onOpenManualLink(note)}
             className="icon-button"
             title="Vincular con marcador"
+            aria-label="Vincular con marcador"
           >
             <Plus size={14} />
           </button>
@@ -119,6 +125,7 @@ export default function NoteCard({
             onClick={() => onEdit(note)}
             className="icon-button"
             title="Editar nota"
+            aria-label="Editar nota"
           >
             <Edit3 size={14} />
           </button>
@@ -129,6 +136,7 @@ export default function NoteCard({
             onClick={() => onDelete(note)}
             className="icon-button danger"
             title="Mover a la papelera"
+            aria-label="Mover a la papelera"
           >
             <Trash2 size={14} />
           </button>

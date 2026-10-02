@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Home,
   Bookmark,
@@ -15,7 +15,7 @@ import { getFaviconUrl } from '../utils/favicon';
 function TreeLeaf({ item, onOpenItem }) {
   const [faviconFailed, setFaviconFailed] = useState(false);
   const isNote = item.type === 'note';
-  const faviconUrl = isNote ? '' : getFaviconUrl(item.url, item.favicon);
+  const faviconUrl = isNote ? '' : getFaviconUrl(item.url);
   const showFavicon = !isNote && Boolean(faviconUrl) && !faviconFailed;
 
   return (
@@ -63,23 +63,23 @@ export default function Sidebar({
   const [expandedNodes, setExpandedNodes] = useState({});
 
   // Auto-expand the ancestor path of the active filter selection so the
-  // selected category/subcategory/theme is always revealed.
-  useEffect(() => {
-    if (!selectedCategory) return;
-    setExpandedNodes(prev => {
-      const next = { ...prev };
-      next[selectedCategory] = true;
-      if (selectedSubcategory) {
-        next[`${selectedCategory}||${selectedSubcategory}`] = true;
-        if (selectedTheme) {
-          next[`${selectedCategory}||${selectedSubcategory}||${selectedTheme}`] = true;
-        }
-      } else if (selectedTheme) {
-        next[`${selectedCategory}||||${selectedTheme}`] = true;
+  // selected category/subcategory/theme is always revealed. Adjusted during
+  // render when the selection changes (no effect, no extra commit).
+  const selectionKey = `${selectedCategory}||${selectedSubcategory}||${selectedTheme}`;
+  const [revealedSelection, setRevealedSelection] = useState(null);
+  if (selectedCategory && revealedSelection !== selectionKey) {
+    setRevealedSelection(selectionKey);
+    const next = { ...expandedNodes, [selectedCategory]: true };
+    if (selectedSubcategory) {
+      next[`${selectedCategory}||${selectedSubcategory}`] = true;
+      if (selectedTheme) {
+        next[`${selectedCategory}||${selectedSubcategory}||${selectedTheme}`] = true;
       }
-      return next;
-    });
-  }, [selectedCategory, selectedSubcategory, selectedTheme]);
+    } else if (selectedTheme) {
+      next[`${selectedCategory}||||${selectedTheme}`] = true;
+    }
+    setExpandedNodes(next);
+  }
 
   const toggleNode = (key, e) => {
     e.stopPropagation();

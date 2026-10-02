@@ -1,38 +1,32 @@
-import React, { useEffect } from 'react';
-import { 
-  X, 
-  GitMerge, 
-  Edit3, 
-  Download 
+import React, { useId } from 'react';
+import {
+  X,
+  GitMerge,
+  Edit3,
+  Download
 } from 'lucide-react';
 import MarkdownViewer from './MarkdownViewer';
+import Dialog from './Dialog';
 
+/** Render only while a note is selected. */
 export default function NoteDetailModal({
-  isOpen,
   onClose,
   note,
   onEdit,
   onViewRelated,
   onWikiLinkClick
 }) {
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen || !note) return null;
+  const id = useId();
 
   const handleExportMarkdown = () => {
+    const yaml = (value) => JSON.stringify(String(value ?? ''));
     const frontmatter = `---
-title: "${note.title}"
-category: "${note.category}"
-subcategory: "${note.subcategory || ''}"
-theme: "${note.theme || ''}"
-tags: [${(note.tags || []).map(t => `"${t}"`).join(', ')}]
-created_at: "${note.created_at}"
+title: ${yaml(note.title)}
+category: ${yaml(note.category)}
+subcategory: ${yaml(note.subcategory)}
+theme: ${yaml(note.theme)}
+tags: [${(note.tags || []).map(yaml).join(', ')}]
+created_at: ${yaml(note.created_at)}
 ---
 
 ${note.content}
@@ -46,26 +40,20 @@ ${note.content}
     URL.revokeObjectURL(url);
   };
 
-  const formattedDate = note.updated_at 
-    ? new Date(note.updated_at).toLocaleDateString('es-ES', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+  const formattedDate = note.updated_at
+    ? new Date(note.updated_at).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       })
     : '';
 
   return (
-    <div 
-      className="modal-layer"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal wide">
+    <Dialog onClose={onClose} labelledBy={`${id}-title`} className="modal wide">
         {/* Header */}
         <div className="modal-head">
           <div className="modal-head-copy">
-            <h2>{note.title}</h2>
+            <h2 id={`${id}-title`}>{note.title}</h2>
             <p>
               Actualizada el {formattedDate} · Categoría: {note.category} {note.subcategory ? `/ ${note.subcategory}` : ''}
             </p>
@@ -108,11 +96,12 @@ ${note.content}
               <span className="hidden sm:inline">Editar</span>
             </button>
 
-            <button 
-              type="button" 
-              onClick={onClose} 
+            <button
+              type="button"
+              onClick={onClose}
               className="icon-button ml-2"
               title="Cerrar modal (Esc)"
+              aria-label="Cerrar"
             >
               <X size={18} />
             </button>
@@ -155,14 +144,13 @@ ${note.content}
 
             {/* Note Reader Markdown content */}
             <div className="note-reader">
-              <MarkdownViewer 
-                content={note.content} 
+              <MarkdownViewer
+                content={note.content}
                 onWikiLinkClick={onWikiLinkClick}
               />
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

@@ -1,5 +1,11 @@
 import React, { useRef, useEffect } from 'react';
 import { Search, Plus, FileText } from 'lucide-react';
+import { isAnyDialogOpen } from '../hooks/useDialog';
+
+function isTypingTarget(target) {
+  return target instanceof HTMLElement &&
+    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+}
 
 export default function Topbar({
   searchQuery,
@@ -8,30 +14,39 @@ export default function Topbar({
   onNewNote
 }) {
   const searchInputRef = useRef(null);
+  // Latest callbacks without re-registering the listener on every render.
+  const actionsRef = useRef({ onNewBookmark, onNewNote });
+  useEffect(() => {
+    actionsRef.current = { onNewBookmark, onNewNote };
+  }, [onNewBookmark, onNewNote]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Ctrl+K or Cmd+K: Focus search input
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
+        return;
       }
-      // Alt+N: New note
-      if (e.altKey && e.key.toLowerCase() === 'n') {
+
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      // Never steal keystrokes from a text field (on macOS Option+N types "ñ")
+      // or open a form on top of an open dialog.
+      if (isTypingTarget(e.target) || isAnyDialogOpen()) return;
+
+      if (e.code === 'KeyN') {
         e.preventDefault();
-        onNewNote();
-      }
-      // Alt+B: New bookmark
-      if (e.altKey && e.key.toLowerCase() === 'b') {
+        actionsRef.current.onNewNote();
+      } else if (e.code === 'KeyB') {
         e.preventDefault();
-        onNewBookmark();
+        actionsRef.current.onNewBookmark();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onNewBookmark, onNewNote]);
+  }, []);
 
   return (
     <header className="topbar">

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import HomeDashboard from './components/HomeDashboard';
 import FilterBar from './components/FilterBar';
+import CollectionPage from './components/CollectionPage';
 import BookmarkCard from './components/BookmarkCard';
 import BookmarkTableView from './components/BookmarkTableView';
 import NoteCard from './components/NoteCard';
@@ -17,16 +18,13 @@ import NoteDetailModal from './components/NoteDetailModal';
 import RelatedDrawerModal from './components/RelatedDrawerModal';
 import ManualLinkModal from './components/ManualLinkModal';
 
+import { useLibrary } from './hooks/useLibrary';
+import { useToasts } from './hooks/useToasts';
+
 import {
-  fetchStats,
-  fetchTaxonomy,
-  fetchBookmarks,
-  fetchNotes,
   fetchBookmarkRelated,
   fetchNoteRelated,
-  fetchBookmarkById,
   fetchNoteById,
-  fetchCrossRelations,
   createBookmark,
   updateBookmark,
   trashBookmark,
@@ -37,121 +35,58 @@ import {
   unlinkRelation
 } from './api';
 
-import { 
-  Bookmark, 
-  FileText, 
-  LayoutGrid, 
-  List, 
-  Plus, 
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
+import { Bookmark, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+
+const EMPTY_FILTERS = { category: '', subcategory: '', theme: '', tag: '' };
+const SEARCH_DEBOUNCE_MS = 280;
+
+function openExternal(url) {
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+}
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); // 'home' | 'bookmarks' | 'notes' | 'graph' | 'matrix' | 'settings'
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [bookmarkViewMode, setBookmarkViewMode] = useState('grid'); // 'grid' | 'table'
-  const [noteViewMode, setNoteViewMode] = useState('grid'); // 'grid' | 'table'
+  const [noteViewMode, setNoteViewMode] = useState('grid');
 
-  const [stats, setStats] = useState(null);
-  const [taxonomy, setTaxonomy] = useState(null);
-  const [bookmarks, setBookmarks] = useState([]);
-  const [notes, setNotes] = useState([]);
-  const [crossRelations, setCrossRelations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Search & Filters
+  // Search & filters
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [filters, setFilters] = useState({
-    category: '',
-    subcategory: '',
-    theme: '',
-    tag: ''
-  });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
 
-  // Toasts state
-  const [toasts, setToasts] = useState([]);
-  const showToast = (title, message, isError = false) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message, isError }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
-  };
-
-  // Debounce search
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 280);
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Modals state
-  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = useState(false);
-  const [editingBookmark, setEditingBookmark] = useState(null);
+  const activeFilters = useMemo(
+    () => ({ ...filters, q: debouncedSearchQuery.trim() }),
+    [filters, debouncedSearchQuery]
+  );
 
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [editingNote, setEditingNote] = useState(null);
+  const {
+    library,
+    visibleBookmarks,
+    visibleNotes,
+    isLoading,
+    isRefreshing,
+    error,
+    refresh
+  } = useLibrary(activeFilters);
+  const { toasts, showToast } = useToasts();
 
+  // Modals. Forms are mounted only while open, keyed by the edited item.
+  const [bookmarkForm, setBookmarkForm] = useState(null); // null | { initialData }
+  const [noteForm, setNoteForm] = useState(null); // null | { initialData }
   const [selectedNoteForDetail, setSelectedNoteForDetail] = useState(null);
+  const [related, setRelated] = useState(null); // null | { type, item, items }
+  const [manualLink, setManualLink] = useState(null); // null | { type, source }
 
-  const [isRelatedDrawerOpen, setIsRelatedDrawerOpen] = useState(false);
-  const [relatedSourceType, setRelatedSourceType] = useState('bookmark');
-  const [relatedSourceItem, setRelatedSourceItem] = useState(null);
-  const [relatedItems, setRelatedItems] = useState([]);
+  /* ------------------------------- filters ------------------------------- */
 
-  const [isManualLinkModalOpen, setIsManualLinkModalOpen] = useState(false);
-  const [manualLinkSource, setManualLinkSource] = useState(null);
-  const [manualLinkType, setManualLinkType] = useState('bookmark');
-  const [manualLinkTargets, setManualLinkTargets] = useState([]);
-
-  // Load all data
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const activeFilters = { ...filters };
-      if (debouncedSearchQuery.trim()) {
-        activeFilters.q = debouncedSearchQuery.trim();
-      }
-
-      const [statsData, taxData, bmData, ntData, matrixData] = await Promise.all([
-        fetchStats(),
-        fetchTaxonomy(),
-        fetchBookmarks(activeFilters),
-        fetchNotes(activeFilters),
-        fetchCrossRelations()
-      ]);
-
-      setStats(statsData);
-      setTaxonomy(taxData);
-      setBookmarks(bmData);
-      setNotes(ntData);
-      setCrossRelations(matrixData);
-    } catch (err) {
-      console.error(err);
-      setError('No se pudo conectar con el servidor local SQLite.');
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, debouncedSearchQuery]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Handle tree taxonomy selection from sidebar
-  const handleSelectTaxonomy = (cat, subcat, theme = '') => {
-    setFilters(prev => ({
-      ...prev,
-      category: cat,
-      subcategory: subcat,
-      theme
-    }));
+  const handleSelectTaxonomy = (category, subcategory, theme = '') => {
+    setFilters(prev => ({ ...prev, category, subcategory, theme }));
     if (currentTab !== 'bookmarks' && currentTab !== 'notes') {
       setCurrentTab('bookmarks');
     }
@@ -172,225 +107,200 @@ export default function App() {
   };
 
   const handleClearFilters = () => {
-    setFilters({
-      category: '',
-      subcategory: '',
-      theme: '',
-      tag: ''
-    });
+    setFilters(EMPTY_FILTERS);
     setSearchQuery('');
   };
 
-  // WikiLink Navigation Handler (Obsidian style)
-  const handleWikiLinkNavigate = (targetTitle) => {
-    if (!targetTitle) return;
-    const clean = targetTitle.trim().toLowerCase();
+  /* ------------------------------ navigation ----------------------------- */
 
-    // 1. Search in notes
-    const matchedNote = notes.find(n => n.title.toLowerCase() === clean) ||
-                        notes.find(n => n.title.toLowerCase().includes(clean));
+  const openNoteDetail = async (noteOrId) => {
+    try {
+      const id = typeof noteOrId === 'object' ? noteOrId.id : noteOrId;
+      // Dashboard and tree rows carry no content/tags: always use a full note.
+      const full = library.notes.find(n => n.id === id) || await fetchNoteById(id);
+      setSelectedNoteForDetail(full);
+    } catch (err) {
+      showToast('Error', err.message, true);
+    }
+  };
+
+  const loadRelated = (type, id) =>
+    type === 'bookmark' ? fetchBookmarkRelated(id) : fetchNoteRelated(id);
+
+  const openRelated = async (type, item) => {
+    try {
+      const items = await loadRelated(type, item.id);
+      setRelated({ type, item, items });
+    } catch (err) {
+      showToast('Error', err.message, true);
+    }
+  };
+
+  const handleViewRelatedBookmark = (bookmark) => openRelated('bookmark', bookmark);
+  const handleViewRelatedNote = (note) => openRelated('note', note);
+
+  const openBookmark = (bookmarkOrId) => {
+    const id = typeof bookmarkOrId === 'object' ? bookmarkOrId.id : bookmarkOrId;
+    const bookmark = library.bookmarks.find(b => b.id === id) || bookmarkOrId;
+    if (bookmark?.url) openExternal(bookmark.url);
+    else if (bookmark?.id) handleViewRelatedBookmark(bookmark);
+  };
+
+  // Obsidian-style [[WikiLink]]: searches the whole library, not the filtered view.
+  const handleWikiLinkNavigate = (targetTitle) => {
+    const clean = targetTitle?.trim().toLowerCase();
+    if (!clean) return;
+
+    const findByTitle = (items) =>
+      items.find(i => i.title.toLowerCase() === clean) ||
+      items.find(i => i.title.toLowerCase().includes(clean));
+
+    const matchedNote = findByTitle(library.notes);
     if (matchedNote) {
       setSelectedNoteForDetail(matchedNote);
       return;
     }
 
-    // 2. Search in bookmarks
-    const matchedBm = bookmarks.find(b => b.title.toLowerCase() === clean) ||
-                      bookmarks.find(b => b.title.toLowerCase().includes(clean));
-    if (matchedBm) {
-      if (matchedBm.url) {
-        window.open(matchedBm.url, '_blank', 'noopener,noreferrer');
-      } else {
-        handleViewRelatedBookmark(matchedBm);
-      }
+    const matchedBookmark = findByTitle(library.bookmarks);
+    if (matchedBookmark) {
+      openBookmark(matchedBookmark);
       return;
     }
 
-    // 3. Fallback: filter search
+    // Fallback: search for it
     setSearchQuery(targetTitle);
     setCurrentTab('notes');
     setSelectedNoteForDetail(null);
   };
 
-  // View Related Handler
-  const handleViewRelatedBookmark = async (bookmark) => {
-    try {
-      const related = await fetchBookmarkRelated(bookmark.id);
-      setRelatedSourceType('bookmark');
-      setRelatedSourceItem(bookmark);
-      setRelatedItems(related);
-      setIsRelatedDrawerOpen(true);
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
-
-  const handleViewRelatedNote = async (note) => {
-    try {
-      const related = await fetchNoteRelated(note.id);
-      setRelatedSourceType('note');
-      setRelatedSourceItem(note);
-      setRelatedItems(related);
-      setIsRelatedDrawerOpen(true);
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
-
-  // Sidebar tree leaf opener: notes open the detail modal; bookmarks open the URL
-  // in a new tab plus the existing relations drawer.
+  // Sidebar tree leaf: notes open the detail modal; bookmarks open the URL
+  // plus the relations drawer.
   const handleOpenTreeItem = async (item) => {
-    try {
-      if (!item) return;
-
-      if (item.type === 'note') {
-        const loaded = notes.find(n => n.id === item.id);
-        const fullNote = loaded && loaded.content ? loaded : await fetchNoteById(item.id);
-        setSelectedNoteForDetail(fullNote);
-        return;
-      }
-
-      if (item.type === 'bookmark') {
-        const loaded = bookmarks.find(b => b.id === item.id);
-        const fullBookmark = loaded || await fetchBookmarkById(item.id);
-        if (fullBookmark?.url) {
-          window.open(fullBookmark.url, '_blank', 'noopener,noreferrer');
-        }
-        await handleViewRelatedBookmark(fullBookmark);
-      }
-    } catch (err) {
-      showToast('Error', err.message, true);
+    if (!item) return;
+    if (item.type === 'note') {
+      await openNoteDetail(item.id);
+    } else if (item.type === 'bookmark') {
+      const bookmark = library.bookmarks.find(b => b.id === item.id) || item;
+      openExternal(bookmark.url);
+      await handleViewRelatedBookmark(bookmark);
     }
   };
 
-  // Manual Link Openers. Targets are fetched unfiltered: the active search or
-  // taxonomy filter must not hide items the user wants to link to.
-  const handleOpenManualLinkFromBookmark = async (bookmark) => {
-    try {
-      setManualLinkTargets(await fetchNotes());
-      setManualLinkSource(bookmark);
-      setManualLinkType('bookmark');
-      setIsManualLinkModalOpen(true);
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
+  /* ---------------------------- manual links ----------------------------- */
 
-  const handleOpenManualLinkFromNote = async (note) => {
-    try {
-      setManualLinkTargets(await fetchBookmarks());
-      setManualLinkSource(note);
-      setManualLinkType('note');
-      setIsManualLinkModalOpen(true);
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
+  const handleOpenManualLink = (type, source) => setManualLink({ type, source });
 
-  const handlePerformLink = async (bmId, nId, notesText) => {
+  const runLinkMutation = async (mutation, successTitle, successMessage) => {
     try {
-      await linkRelation(bmId, nId, notesText);
-      await loadData();
-      showToast('Vínculo creado', 'La relación ha sido guardada.');
-      if (isRelatedDrawerOpen && relatedSourceItem) {
-        if (relatedSourceType === 'bookmark') {
-          const fresh = await fetchBookmarkRelated(relatedSourceItem.id);
-          setRelatedItems(fresh);
-        } else {
-          const fresh = await fetchNoteRelated(relatedSourceItem.id);
-          setRelatedItems(fresh);
-        }
+      await mutation();
+      showToast(successTitle, successMessage);
+      await refresh();
+      if (related) {
+        const items = await loadRelated(related.type, related.item.id);
+        setRelated(prev => (prev ? { ...prev, items } : prev));
       }
     } catch (err) {
       showToast('Error', err.message, true);
     }
   };
 
-  const handlePerformUnlink = async (bmId, nId) => {
-    try {
-      await unlinkRelation(bmId, nId);
-      await loadData();
-      showToast('Vínculo eliminado', 'La relación fue desvinculada.');
-      if (isRelatedDrawerOpen && relatedSourceItem) {
-        if (relatedSourceType === 'bookmark') {
-          const fresh = await fetchBookmarkRelated(relatedSourceItem.id);
-          setRelatedItems(fresh);
-        } else {
-          const fresh = await fetchNoteRelated(relatedSourceItem.id);
-          setRelatedItems(fresh);
-        }
-      }
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
+  const handlePerformLink = (bookmarkId, noteId, notesText) =>
+    runLinkMutation(() => linkRelation(bookmarkId, noteId, notesText), 'Vínculo creado', 'La relación ha sido guardada.');
 
-  // Bookmark CRUD handlers
+  const handlePerformUnlink = (bookmarkId, noteId) =>
+    runLinkMutation(() => unlinkRelation(bookmarkId, noteId), 'Vínculo eliminado', 'La relación fue desvinculada.');
+
+  /* -------------------------------- CRUD --------------------------------- */
+
+  /** @returns {Promise<boolean>} true when saved (the form then closes) */
   const handleSaveBookmark = async (formData) => {
+    const editing = bookmarkForm?.initialData;
     try {
-      if (editingBookmark) {
-        await updateBookmark(editingBookmark.id, formData);
+      if (editing) {
+        await updateBookmark(editing.id, formData);
         showToast('Marcador actualizado', 'Los cambios han sido guardados.');
       } else {
         await createBookmark(formData);
         showToast('Marcador creado', 'El enlace ya está en tu biblioteca.');
       }
-      setIsBookmarkModalOpen(false);
-      setEditingBookmark(null);
-      await loadData();
+      setBookmarkForm(null);
+      await refresh();
+      return true;
     } catch (err) {
       showToast('Error', err.message, true);
+      return false;
     }
   };
 
-  const handleTrashBookmark = async (bookmark) => {
-    if (!window.confirm(`¿Mover "${bookmark.title}" a la papelera?`)) return;
-    try {
-      await trashBookmark(bookmark.id);
-      showToast('Movido a papelera', 'Podés restaurarlo desde Ajustes y Backups.');
-      await loadData();
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
-  };
-
-  // Note CRUD handlers
   const handleSaveNote = async (formData) => {
+    const editing = noteForm?.initialData;
     try {
-      if (editingNote) {
-        await updateNote(editingNote.id, formData);
+      if (editing) {
+        await updateNote(editing.id, formData);
         showToast('Nota actualizada', 'Los cambios han sido guardados en SQLite.');
       } else {
         await createNote(formData);
         showToast('Nota guardada', 'La nota ha sido creada en tu biblioteca.');
       }
-      setIsNoteModalOpen(false);
-      setEditingNote(null);
-      await loadData();
+      setNoteForm(null);
+      await refresh();
+      return true;
+    } catch (err) {
+      showToast('Error', err.message, true);
+      return false;
+    }
+  };
+
+  const handleTrash = async (item, trash) => {
+    if (!window.confirm(`¿Mover "${item.title}" a la papelera?`)) return;
+    try {
+      await trash(item.id);
+      showToast('Movido a papelera', 'Podés restaurarlo desde Ajustes y Backups.');
+      await refresh();
     } catch (err) {
       showToast('Error', err.message, true);
     }
   };
 
-  const handleTrashNote = async (note) => {
-    if (!window.confirm(`¿Mover "${note.title}" a la papelera?`)) return;
-    try {
-      await trashNote(note.id);
-      showToast('Movido a papelera', 'Podés restaurarlo desde Ajustes y Backups.');
-      await loadData();
-    } catch (err) {
-      showToast('Error', err.message, true);
-    }
+  const handleTrashBookmark = (bookmark) => handleTrash(bookmark, trashBookmark);
+  const handleTrashNote = (note) => handleTrash(note, trashNote);
+
+  const openNewBookmark = () => setBookmarkForm({ initialData: null });
+  const openEditBookmark = (bookmark) => setBookmarkForm({ initialData: bookmark });
+  const openNewNote = () => setNoteForm({ initialData: null });
+  const openEditNote = (note) => setNoteForm({ initialData: note });
+
+  const filterBar = (
+    <FilterBar
+      taxonomy={library.taxonomy}
+      filters={filters}
+      onFilterChange={handleFilterChange}
+      onClearFilters={handleClearFilters}
+    />
+  );
+
+  const bookmarkActions = {
+    onEdit: openEditBookmark,
+    onDelete: handleTrashBookmark,
+    onViewRelated: handleViewRelatedBookmark,
+    onOpenManualLink: (bookmark) => handleOpenManualLink('bookmark', bookmark)
+  };
+
+  const noteActions = {
+    onEdit: openEditNote,
+    onDelete: handleTrashNote,
+    onViewRelated: handleViewRelatedNote,
+    onOpenManualLink: (note) => handleOpenManualLink('note', note),
+    onSelectNote: openNoteDetail
   };
 
   return (
     <div className={`app-shell ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {/* Sidebar */}
       <Sidebar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
-        stats={stats}
-        taxonomy={taxonomy}
+        stats={library.stats}
+        taxonomy={library.taxonomy}
         selectedCategory={filters.category}
         selectedSubcategory={filters.subcategory}
         selectedTheme={filters.theme}
@@ -400,258 +310,94 @@ export default function App() {
         setIsCollapsed={setIsSidebarCollapsed}
       />
 
-      {/* Main Workspace */}
       <main className="workspace">
-        {/* Topbar */}
         <Topbar
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onNewBookmark={() => {
-            setEditingBookmark(null);
-            setIsBookmarkModalOpen(true);
-          }}
-          onNewNote={() => {
-            setEditingNote(null);
-            setIsNoteModalOpen(true);
-          }}
+          onNewBookmark={openNewBookmark}
+          onNewNote={openNewNote}
         />
 
-        {/* Content Container */}
         <div className="content">
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-center gap-3">
+            <div role="alert" className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-center gap-3">
               <AlertCircle size={18} />
               <span>{error}</span>
             </div>
           )}
 
-          {/* TAB 1: HOME DASHBOARD */}
           {currentTab === 'home' && (
             <HomeDashboard
-              stats={stats}
-              onNavigateTab={(tab) => setCurrentTab(tab)}
-              onOpenNoteDetail={(note) => handleOpenTreeItem({ type: 'note', id: note.id })}
-              onOpenBookmark={(bm) => window.open(bm.url, '_blank')}
+              stats={library.stats}
+              onOpenNoteDetail={openNoteDetail}
               onOpenSettings={() => setCurrentTab('settings')}
             />
           )}
 
-          {/* TAB 2: BOOKMARKS */}
           {currentTab === 'bookmarks' && (
-            <div>
-              <div className="page-head">
-                <div>
-                  <div className="eyebrow">Colección de enlaces</div>
-                  <h1 className="page-title">Marcadores Guardados</h1>
-                  <p className="page-subtitle">
-                    Enlaces categorizados con soporte para favicon, acento de color y verificación de estado.
-                  </p>
-                </div>
-
-                <div className="page-head-actions">
-                  <div className="view-switch">
-                    <button
-                      type="button"
-                      onClick={() => setBookmarkViewMode('grid')}
-                      className={bookmarkViewMode === 'grid' ? 'active' : ''}
-                      title="Vista en tarjetas"
-                    >
-                      <LayoutGrid size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBookmarkViewMode('table')}
-                      className={bookmarkViewMode === 'table' ? 'active' : ''}
-                      title="Vista en tabla"
-                    >
-                      <List size={15} />
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingBookmark(null);
-                      setIsBookmarkModalOpen(true);
-                    }}
-                    className="button primary small"
-                  >
-                    <Plus size={14} />
-                    <span>Nuevo Marcador</span>
-                  </button>
-                </div>
-              </div>
-
-              <FilterBar
-                taxonomy={taxonomy}
-                filters={filters}
-                onFilterChange={handleFilterChange}
-                onClearFilters={handleClearFilters}
-              />
-
-              {loading ? (
-                <div className="loading-skeleton"></div>
-              ) : bookmarks.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-inner">
-                    <div className="empty-icon">
-                      <Bookmark size={24} />
-                    </div>
-                    <h3>No hay marcadores coincidentes</h3>
-                    <p>Probá cambiando los filtros o agregá un nuevo marcador a tu colección.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingBookmark(null);
-                        setIsBookmarkModalOpen(true);
-                      }}
-                      className="button primary"
-                    >
-                      Crear primer marcador
-                    </button>
-                  </div>
-                </div>
-              ) : bookmarkViewMode === 'grid' ? (
+            <CollectionPage
+              eyebrow="Colección de enlaces"
+              title="Marcadores Guardados"
+              subtitle="Enlaces categorizados con soporte para favicon, acento de color y verificación de estado."
+              viewMode={bookmarkViewMode}
+              onViewModeChange={setBookmarkViewMode}
+              newLabel="Nuevo Marcador"
+              onNew={openNewBookmark}
+              filterBar={filterBar}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              isEmpty={visibleBookmarks.length === 0}
+              empty={{
+                Icon: Bookmark,
+                title: 'No hay marcadores coincidentes',
+                text: 'Probá cambiando los filtros o agregá un nuevo marcador a tu colección.',
+                actionLabel: 'Crear primer marcador'
+              }}
+            >
+              {bookmarkViewMode === 'grid' ? (
                 <div className="cards-grid">
-                  {bookmarks.map((bm, index) => (
-                    <BookmarkCard
-                      key={bm.id}
-                      bookmark={bm}
-                      onEdit={(b) => {
-                        setEditingBookmark(b);
-                        setIsBookmarkModalOpen(true);
-                      }}
-                      onDelete={handleTrashBookmark}
-                      onViewRelated={handleViewRelatedBookmark}
-                      onOpenManualLink={handleOpenManualLinkFromBookmark}
-                    />
+                  {visibleBookmarks.map(bm => (
+                    <BookmarkCard key={bm.id} bookmark={bm} {...bookmarkActions} />
                   ))}
                 </div>
               ) : (
-                <BookmarkTableView
-                  bookmarks={bookmarks}
-                  onEdit={(b) => {
-                    setEditingBookmark(b);
-                    setIsBookmarkModalOpen(true);
-                  }}
-                  onDelete={handleTrashBookmark}
-                  onViewRelated={handleViewRelatedBookmark}
-                  onOpenManualLink={handleOpenManualLinkFromBookmark}
-                />
+                <BookmarkTableView bookmarks={visibleBookmarks} {...bookmarkActions} />
               )}
-            </div>
+            </CollectionPage>
           )}
 
-          {/* TAB 3: NOTES */}
           {currentTab === 'notes' && (
-            <div>
-              <div className="page-head">
-                <div>
-                  <div className="eyebrow">Base de conocimiento</div>
-                  <h1 className="page-title">Notas Personales</h1>
-                  <p className="page-subtitle">
-                    Documentación técnica estructurada en Markdown con enlaces cruzados [[WikiLinks]] y resaltado de sintaxis.
-                  </p>
-                </div>
-
-                <div className="page-head-actions">
-                  <div className="view-switch">
-                    <button
-                      type="button"
-                      onClick={() => setNoteViewMode('grid')}
-                      className={noteViewMode === 'grid' ? 'active' : ''}
-                      title="Vista en tarjetas"
-                    >
-                      <LayoutGrid size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNoteViewMode('table')}
-                      className={noteViewMode === 'table' ? 'active' : ''}
-                      title="Vista en tabla"
-                    >
-                      <List size={15} />
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingNote(null);
-                      setIsNoteModalOpen(true);
-                    }}
-                    className="button primary small"
-                  >
-                    <Plus size={14} />
-                    <span>Nueva Nota</span>
-                  </button>
-                </div>
-              </div>
-
-              <FilterBar
-                taxonomy={taxonomy}
-                filters={filters}
-                onFilterChange={handleFilterChange}
-                onClearFilters={handleClearFilters}
-              />
-
-              {loading ? (
-                <div className="loading-skeleton"></div>
-              ) : notes.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-inner">
-                    <div className="empty-icon">
-                      <FileText size={24} />
-                    </div>
-                    <h3>No hay notas registradas</h3>
-                    <p>Creá notas técnicas y conectalas con tus marcadores mediante WikiLinks.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingNote(null);
-                        setIsNoteModalOpen(true);
-                      }}
-                      className="button primary"
-                    >
-                      Crear primera nota
-                    </button>
-                  </div>
-                </div>
-              ) : noteViewMode === 'grid' ? (
+            <CollectionPage
+              eyebrow="Base de conocimiento"
+              title="Notas Personales"
+              subtitle="Documentación técnica estructurada en Markdown con enlaces cruzados [[WikiLinks]] y resaltado de sintaxis."
+              viewMode={noteViewMode}
+              onViewModeChange={setNoteViewMode}
+              newLabel="Nueva Nota"
+              onNew={openNewNote}
+              filterBar={filterBar}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              isEmpty={visibleNotes.length === 0}
+              empty={{
+                Icon: FileText,
+                title: 'No hay notas registradas',
+                text: 'Creá notas técnicas y conectalas con tus marcadores mediante WikiLinks.',
+                actionLabel: 'Crear primera nota'
+              }}
+            >
+              {noteViewMode === 'grid' ? (
                 <div className="cards-grid">
-                  {notes.map((n, index) => (
-                    <NoteCard
-                      key={n.id}
-                      note={n}
-                      onEdit={(noteItem) => {
-                        setEditingNote(noteItem);
-                        setIsNoteModalOpen(true);
-                      }}
-                      onDelete={handleTrashNote}
-                      onViewRelated={handleViewRelatedNote}
-                      onOpenManualLink={handleOpenManualLinkFromNote}
-                      onSelectNote={(noteItem) => setSelectedNoteForDetail(noteItem)}
-                      onWikiLinkClick={handleWikiLinkNavigate}
-                    />
+                  {visibleNotes.map(n => (
+                    <NoteCard key={n.id} note={n} {...noteActions} />
                   ))}
                 </div>
               ) : (
-                <NoteTableView
-                  notes={notes}
-                  onEdit={(noteItem) => {
-                    setEditingNote(noteItem);
-                    setIsNoteModalOpen(true);
-                  }}
-                  onDelete={handleTrashNote}
-                  onViewRelated={handleViewRelatedNote}
-                  onOpenManualLink={handleOpenManualLinkFromNote}
-                  onSelectNote={(noteItem) => setSelectedNoteForDetail(noteItem)}
-                />
+                <NoteTableView notes={visibleNotes} {...noteActions} />
               )}
-            </div>
+            </CollectionPage>
           )}
 
-          {/* TAB 4: GRAPH VIEW */}
           {currentTab === 'graph' && (
             <div>
               <div className="page-head">
@@ -665,18 +411,17 @@ export default function App() {
               </div>
 
               <GraphView
-                bookmarks={bookmarks}
-                notes={notes}
-                relations={crossRelations}
-                categories={taxonomy?.categories || []}
-                onOpenNoteDetail={(note) => setSelectedNoteForDetail(note)}
+                bookmarks={library.bookmarks}
+                notes={library.notes}
+                relations={library.relations}
+                categories={library.taxonomy?.categories || []}
+                onOpenNoteDetail={openNoteDetail}
                 onViewRelatedBookmark={handleViewRelatedBookmark}
                 onViewRelatedNote={handleViewRelatedNote}
               />
             </div>
           )}
 
-          {/* TAB 5: CROSS MATRIX */}
           {currentTab === 'matrix' && (
             <div>
               <div className="page-head">
@@ -690,115 +435,89 @@ export default function App() {
               </div>
 
               <CrossMatrixView
-                relations={crossRelations}
+                relations={library.relations}
                 onUnlinkManual={handlePerformUnlink}
-                onNavigateToBookmark={(bmId) => {
-                  const b = bookmarks.find(item => item.id === bmId);
-                  if (b?.url) window.open(b.url, '_blank');
-                  else if (b) handleViewRelatedBookmark(b);
-                }}
-                onNavigateToNote={(nId) => {
-                  const n = notes.find(item => item.id === nId);
-                  if (n) setSelectedNoteForDetail(n);
-                }}
+                onNavigateToBookmark={openBookmark}
+                onNavigateToNote={openNoteDetail}
               />
             </div>
           )}
 
-          {/* TAB 6: SETTINGS & TRASH */}
           {currentTab === 'settings' && (
-            <SettingsView
-              onRefreshData={loadData}
-              onShowToast={showToast}
-            />
+            <SettingsView onRefreshData={refresh} onShowToast={showToast} />
           )}
         </div>
       </main>
 
-      {/* MODALS */}
-      <BookmarkFormModal
-        isOpen={isBookmarkModalOpen}
-        onClose={() => {
-          setIsBookmarkModalOpen(false);
-          setEditingBookmark(null);
-        }}
-        onSubmit={handleSaveBookmark}
-        initialData={editingBookmark}
-        taxonomy={taxonomy}
-      />
-
-      <NoteFormModal
-        isOpen={isNoteModalOpen}
-        onClose={() => {
-          setIsNoteModalOpen(false);
-          setEditingNote(null);
-        }}
-        onSubmit={handleSaveNote}
-        initialData={editingNote}
-        taxonomy={taxonomy}
-      />
-
-      <NoteDetailModal
-        isOpen={!!selectedNoteForDetail}
-        note={selectedNoteForDetail}
-        onClose={() => setSelectedNoteForDetail(null)}
-        onEdit={(note) => {
-          setEditingNote(note);
-          setIsNoteModalOpen(true);
-        }}
-        onViewRelated={handleViewRelatedNote}
-        onWikiLinkClick={handleWikiLinkNavigate}
-      />
-
-      <RelatedDrawerModal
-        isOpen={isRelatedDrawerOpen}
-        onClose={() => {
-          setIsRelatedDrawerOpen(false);
-          setRelatedSourceItem(null);
-        }}
-        sourceType={relatedSourceType}
-        sourceItem={relatedSourceItem}
-        relatedItems={relatedItems}
-        onOpenNoteDetail={(note) => setSelectedNoteForDetail(note)}
-        onOpenManualLink={(item) => {
-          if (relatedSourceType === 'bookmark') {
-            handleOpenManualLinkFromBookmark(item);
-          } else {
-            handleOpenManualLinkFromNote(item);
-          }
-        }}
-        onUnlinkManual={handlePerformUnlink}
-      />
-
-      <ManualLinkModal
-        key={manualLinkSource ? `${manualLinkType}-${manualLinkSource.id}` : 'closed'}
-        isOpen={isManualLinkModalOpen}
-        onClose={() => {
-          setIsManualLinkModalOpen(false);
-          setManualLinkSource(null);
-        }}
-        sourceItem={manualLinkSource}
-        sourceType={manualLinkType}
-        availableTargets={manualLinkTargets}
-        onLink={handlePerformLink}
-      />
-
-      {/* Toast Notification Stack */}
-      {toasts.length > 0 && (
-        <div className="toast-stack">
-          {toasts.map(t => (
-            <div key={t.id} className={`toast ${t.isError ? 'error' : ''}`}>
-              <div className="toast-icon">
-                {t.isError ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
-              </div>
-              <div className="toast-copy">
-                <strong>{t.title}</strong>
-                <span>{t.message}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* MODALS — mounted only while open */}
+      {bookmarkForm && (
+        <BookmarkFormModal
+          key={bookmarkForm.initialData?.id ?? 'new'}
+          onClose={() => setBookmarkForm(null)}
+          onSubmit={handleSaveBookmark}
+          initialData={bookmarkForm.initialData}
+          taxonomy={library.taxonomy}
+        />
       )}
+
+      {noteForm && (
+        <NoteFormModal
+          key={noteForm.initialData?.id ?? 'new'}
+          onClose={() => setNoteForm(null)}
+          onSubmit={handleSaveNote}
+          initialData={noteForm.initialData}
+          taxonomy={library.taxonomy}
+        />
+      )}
+
+      {selectedNoteForDetail && (
+        <NoteDetailModal
+          note={selectedNoteForDetail}
+          onClose={() => setSelectedNoteForDetail(null)}
+          onEdit={openEditNote}
+          onViewRelated={handleViewRelatedNote}
+          onWikiLinkClick={handleWikiLinkNavigate}
+        />
+      )}
+
+      {related && (
+        <RelatedDrawerModal
+          onClose={() => setRelated(null)}
+          sourceType={related.type}
+          sourceItem={related.item}
+          relatedItems={related.items}
+          onOpenManualLink={(item) => handleOpenManualLink(related.type, item)}
+          onUnlinkManual={handlePerformUnlink}
+          onSelectCounterpart={(item, type) => (type === 'note' ? openNoteDetail(item) : openBookmark(item))}
+        />
+      )}
+
+      {manualLink && (
+        <ManualLinkModal
+          key={`${manualLink.type}-${manualLink.source.id}`}
+          onClose={() => setManualLink(null)}
+          sourceItem={manualLink.source}
+          sourceType={manualLink.type}
+          // The complete library: the active filter must not hide link targets.
+          availableTargets={manualLink.type === 'bookmark' ? library.notes : library.bookmarks}
+          onLink={handlePerformLink}
+        />
+      )}
+
+      {/* Toast notifications: a live region that exists before any toast appears */}
+      <div className="toast-stack" role="status" aria-live="polite">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast ${t.isError ? 'error' : ''}`}>
+            <div className="toast-icon">
+              {t.isError ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+            </div>
+            <div className="toast-copy">
+              <strong>{t.title}</strong>
+              <span>{t.message}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

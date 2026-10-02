@@ -1,23 +1,20 @@
-import React, { useState } from 'react';
-import { 
-  X, 
-  GitMerge, 
-  ExternalLink, 
-  FileText, 
-  Bookmark, 
-  Tag as TagIcon, 
-  Layers, 
-  FolderTree, 
-  Target, 
-  Plus, 
+import React, { useId } from 'react';
+import {
+  X,
+  GitMerge,
+  ExternalLink,
+  FileText,
+  Bookmark,
+  Plus,
   Trash2,
   CheckCircle2,
   Sparkles,
   Link2
 } from 'lucide-react';
+import Dialog from './Dialog';
 
+/** Render only while open. */
 export default function RelatedDrawerModal({
-  isOpen,
   onClose,
   sourceType, // 'bookmark' | 'note'
   sourceItem,
@@ -26,15 +23,20 @@ export default function RelatedDrawerModal({
   onUnlinkManual,
   onSelectCounterpart
 }) {
-  if (!isOpen || !sourceItem) return null;
+  const id = useId();
+  if (!sourceItem) return null;
 
   const isBookmark = sourceType === 'bookmark';
   const titleCounterpart = isBookmark ? 'Notas Relacionadas' : 'Marcadores Relacionados';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center items-center p-4">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+    <Dialog
+      onClose={onClose}
+      labelledBy={`${id}-title`}
+      layerClassName="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center items-center p-4"
+      className="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] outline-none"
+    >
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -42,7 +44,7 @@ export default function RelatedDrawerModal({
               <GitMerge className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <h2 id={`${id}-title`} className="text-base font-bold text-white flex items-center gap-2">
                 <span>Relaciones por Coincidencia Taxonómica</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {relatedItems.length} {relatedItems.length === 1 ? 'coincidencia' : 'coincidencias'}
@@ -53,9 +55,11 @@ export default function RelatedDrawerModal({
               </p>
             </div>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="Cerrar"
           >
             <X className="w-5 h-5" />
           </button>
@@ -116,13 +120,13 @@ export default function RelatedDrawerModal({
               </button>
             </div>
           ) : (
-            relatedItems.map((item, idx) => {
+            relatedItems.map((item) => {
               const counterpart = isBookmark ? item.note : item.bookmark;
               const rel = item.relationship;
 
               return (
-                <div 
-                  key={counterpart.id} 
+                <div
+                  key={counterpart.id}
                   className="bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/80 rounded-xl p-4 transition-all"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -133,7 +137,13 @@ export default function RelatedDrawerModal({
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="text-sm font-semibold text-white">
-                            {counterpart.title}
+                            <button
+                              type="button"
+                              onClick={() => onSelectCounterpart(counterpart, isBookmark ? 'note' : 'bookmark')}
+                              className="text-left hover:underline"
+                            >
+                              {counterpart.title}
+                            </button>
                           </h4>
                           {rel.isManual && (
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium flex items-center gap-1">
@@ -149,10 +159,10 @@ export default function RelatedDrawerModal({
                           </p>
                         ) : (
                           <div className="mt-1">
-                            <a 
-                              href={counterpart.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
+                            <a
+                              href={counterpart.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
                             >
                               <span>{counterpart.url}</span>
@@ -171,8 +181,8 @@ export default function RelatedDrawerModal({
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {rel.matchThemes.map((theme, rIdx) => (
-                              <span 
-                                key={rIdx} 
+                              <span
+                                key={rIdx}
                                 className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-md bg-slate-700/60 text-slate-200 border border-slate-600/60"
                               >
                                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -188,11 +198,11 @@ export default function RelatedDrawerModal({
                             {counterpart.tags.map(t => {
                               const isShared = rel.sharedTags?.includes(t);
                               return (
-                                <span 
+                                <span
                                   key={t}
                                   className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                    isShared 
-                                      ? 'bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/40' 
+                                    isShared
+                                      ? 'bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/40'
                                       : 'bg-slate-800 text-slate-400 border border-slate-700'
                                   }`}
                                 >
@@ -213,8 +223,10 @@ export default function RelatedDrawerModal({
                           const nId = isBookmark ? counterpart.id : sourceItem.id;
                           onUnlinkManual(bmId, nId);
                         }}
+                        type="button"
                         className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/50 rounded-lg transition-colors"
                         title="Eliminar vínculo manual"
+                        aria-label={`Eliminar vínculo manual con ${counterpart.title}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -236,7 +248,6 @@ export default function RelatedDrawerModal({
           </button>
         </div>
 
-      </div>
-    </div>
+    </Dialog>
   );
 }

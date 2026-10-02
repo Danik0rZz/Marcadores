@@ -1,252 +1,120 @@
 export const BASE_URL = '/api';
-export const API_BASE_URL = BASE_URL;
 
-export async function fetchStats() {
-  const res = await fetch(`${BASE_URL}/stats`);
-  if (!res.ok) throw new Error('Error al cargar estadísticas');
+/**
+ * Single fetch wrapper: JSON in/out, and the server's own `error` message
+ * surfaces to the UI instead of a generic one.
+ *
+ * @param {string} path API path after /api
+ * @param {{method?: string, body?: unknown, signal?: AbortSignal, fallbackError: string}} options
+ */
+async function request(path, { method = 'GET', body, signal, fallbackError }) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    signal,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || fallbackError);
+  }
   return res.json();
 }
 
-export async function fetchTaxonomy() {
-  const res = await fetch(`${BASE_URL}/taxonomy`);
-  if (!res.ok) throw new Error('Error al cargar taxonomías');
-  return res.json();
-}
-
-export async function fetchBookmarks(filters = {}) {
+function filterQuery(filters = {}) {
   const params = new URLSearchParams();
-  if (filters.category) params.append('category', filters.category);
-  if (filters.subcategory) params.append('subcategory', filters.subcategory);
-  if (filters.theme) params.append('theme', filters.theme);
-  if (filters.tag) params.append('tag', filters.tag);
-  if (filters.q) params.append('q', filters.q);
-
-  const res = await fetch(`${BASE_URL}/bookmarks?${params.toString()}`);
-  if (!res.ok) throw new Error('Error al cargar marcadores');
-  return res.json();
-}
-
-export async function fetchBookmarkRelated(id) {
-  const res = await fetch(`${BASE_URL}/bookmarks/${id}/related`);
-  if (!res.ok) throw new Error('Error al cargar notas relacionadas');
-  return res.json();
-}
-
-export async function fetchBookmarkById(id) {
-  const res = await fetch(`${BASE_URL}/bookmarks/${id}`);
-  if (!res.ok) throw new Error('Error al cargar el marcador');
-  return res.json();
-}
-
-export async function createBookmark(data) {
-  const res = await fetch(`${BASE_URL}/bookmarks`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al crear marcador');
+  for (const key of ['category', 'subcategory', 'theme', 'tag', 'q']) {
+    if (filters[key]) params.append(key, filters[key]);
   }
-  return res.json();
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
-export async function updateBookmark(id, data) {
-  const res = await fetch(`${BASE_URL}/bookmarks/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al actualizar marcador');
-  }
-  return res.json();
-}
+/* Library */
 
-export async function deleteBookmark(id) {
-  const res = await fetch(`${BASE_URL}/bookmarks/${id}`, {
-    method: 'DELETE'
-  });
-  if (!res.ok) throw new Error('Error al eliminar marcador');
-  return res.json();
-}
+export const fetchStats = (signal) =>
+  request('/stats', { signal, fallbackError: 'Error al cargar estadísticas' });
 
-export async function fetchNotes(filters = {}) {
-  const params = new URLSearchParams();
-  if (filters.category) params.append('category', filters.category);
-  if (filters.subcategory) params.append('subcategory', filters.subcategory);
-  if (filters.theme) params.append('theme', filters.theme);
-  if (filters.tag) params.append('tag', filters.tag);
-  if (filters.q) params.append('q', filters.q);
+export const fetchTaxonomy = (signal) =>
+  request('/taxonomy', { signal, fallbackError: 'Error al cargar taxonomías' });
 
-  const res = await fetch(`${BASE_URL}/notes?${params.toString()}`);
-  if (!res.ok) throw new Error('Error al cargar notas');
-  return res.json();
-}
+export const fetchCrossRelations = (signal) =>
+  request('/relations/matrix', { signal, fallbackError: 'Error al cargar matriz de relaciones' });
 
-export async function fetchNoteRelated(id) {
-  const res = await fetch(`${BASE_URL}/notes/${id}/related`);
-  if (!res.ok) throw new Error('Error al cargar marcadores relacionados');
-  return res.json();
-}
+/* Bookmarks */
 
-export async function fetchNoteById(id) {
-  const res = await fetch(`${BASE_URL}/notes/${id}`);
-  if (!res.ok) throw new Error('Error al cargar la nota');
-  return res.json();
-}
+export const fetchBookmarks = (filters, signal) =>
+  request(`/bookmarks${filterQuery(filters)}`, { signal, fallbackError: 'Error al cargar marcadores' });
 
-export async function createNote(data) {
-  const res = await fetch(`${BASE_URL}/notes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al crear nota');
-  }
-  return res.json();
-}
+export const fetchBookmarkById = (id) =>
+  request(`/bookmarks/${id}`, { fallbackError: 'Error al cargar el marcador' });
 
-export async function updateNote(id, data) {
-  const res = await fetch(`${BASE_URL}/notes/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al actualizar nota');
-  }
-  return res.json();
-}
+export const fetchBookmarkRelated = (id) =>
+  request(`/bookmarks/${id}/related`, { fallbackError: 'Error al cargar notas relacionadas' });
 
-export async function deleteNote(id) {
-  const res = await fetch(`${BASE_URL}/notes/${id}`, {
-    method: 'DELETE'
-  });
-  if (!res.ok) throw new Error('Error al eliminar nota');
-  return res.json();
-}
+export const createBookmark = (data) =>
+  request('/bookmarks', { method: 'POST', body: data, fallbackError: 'Error al crear marcador' });
 
-export async function fetchCrossRelations() {
-  const res = await fetch(`${BASE_URL}/relations/matrix`);
-  if (!res.ok) throw new Error('Error al cargar matriz de relaciones');
-  return res.json();
-}
+export const updateBookmark = (id, data) =>
+  request(`/bookmarks/${id}`, { method: 'PUT', body: data, fallbackError: 'Error al actualizar marcador' });
 
-export async function linkRelation(bookmarkId, noteId, notes = '') {
-  const res = await fetch(`${BASE_URL}/relations/link`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookmarkId, noteId, notes })
-  });
-  if (!res.ok) throw new Error('Error al vincular elemento');
-  return res.json();
-}
+export const trashBookmark = (id) =>
+  request(`/bookmarks/${id}/trash`, { method: 'POST', fallbackError: 'Error al mover marcador a la papelera' });
 
-export async function unlinkRelation(bookmarkId, noteId) {
-  const res = await fetch(`${BASE_URL}/relations/unlink`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookmarkId, noteId })
-  });
-  if (!res.ok) throw new Error('Error al desvincular elemento');
-  return res.json();
-}
+export const fetchBookmarkMetadata = (url) =>
+  request('/bookmarks/metadata', { method: 'POST', body: { url }, fallbackError: 'Error al obtener metadatos de la URL' });
 
-export async function fetchBookmarkMetadata(url) {
-  const res = await fetch(`${BASE_URL}/bookmarks/metadata`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url })
-  });
-  if (!res.ok) throw new Error('Error al obtener metadatos de la URL');
-  return res.json();
-}
+export const checkBookmarkHealth = (url) =>
+  request('/bookmarks/check-health', { method: 'POST', body: { url }, fallbackError: 'Error al verificar estado del enlace' });
 
-export async function checkBookmarkHealth(url) {
-  const res = await fetch(`${BASE_URL}/bookmarks/check-health`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url })
-  });
-  if (!res.ok) throw new Error('Error al verificar estado del enlace');
-  return res.json();
-}
+/* Notes */
 
-export async function importHtmlBookmarks(htmlContent, defaultCategory = 'Navegador') {
-  const res = await fetch(`${BASE_URL}/backup/import-html`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ htmlContent, defaultCategory })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al importar archivo HTML');
-  }
-  return res.json();
-}
+export const fetchNotes = (filters, signal) =>
+  request(`/notes${filterQuery(filters)}`, { signal, fallbackError: 'Error al cargar notas' });
 
-export async function trashBookmark(id) {
-  const res = await fetch(`${BASE_URL}/bookmarks/${id}/trash`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error('Error al mover marcador a la papelera');
-  return res.json();
-}
+export const fetchNoteById = (id) =>
+  request(`/notes/${id}`, { fallbackError: 'Error al cargar la nota' });
 
-export async function trashNote(id) {
-  const res = await fetch(`${BASE_URL}/notes/${id}/trash`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error('Error al mover nota a la papelera');
-  return res.json();
-}
+export const fetchNoteRelated = (id) =>
+  request(`/notes/${id}/related`, { fallbackError: 'Error al cargar marcadores relacionados' });
 
-export async function fetchTrash() {
-  const res = await fetch(`${BASE_URL}/trash`);
-  if (!res.ok) throw new Error('Error al obtener elementos de la papelera');
-  return res.json();
-}
+export const createNote = (data) =>
+  request('/notes', { method: 'POST', body: data, fallbackError: 'Error al crear nota' });
 
-export async function restoreTrashItem(type, id) {
-  const res = await fetch(`${BASE_URL}/trash/${type}/${id}/restore`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error('Error al restaurar elemento');
-  return res.json();
-}
+export const updateNote = (id, data) =>
+  request(`/notes/${id}`, { method: 'PUT', body: data, fallbackError: 'Error al actualizar nota' });
 
-export async function destroyTrashItem(type, id) {
-  const res = await fetch(`${BASE_URL}/trash/${type}/${id}`, {
-    method: 'DELETE'
-  });
-  if (!res.ok) throw new Error('Error al eliminar definitivamente');
-  return res.json();
-}
+export const trashNote = (id) =>
+  request(`/notes/${id}/trash`, { method: 'POST', fallbackError: 'Error al mover nota a la papelera' });
 
-export async function emptyTrash() {
-  const res = await fetch(`${BASE_URL}/trash`, {
-    method: 'DELETE'
-  });
-  if (!res.ok) throw new Error('Error al vaciar papelera');
-  return res.json();
-}
+/* Manual relations */
 
-export async function importBackup(backupData, mode = 'append') {
-  const res = await fetch(`${BASE_URL}/backup/import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...backupData, mode })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al importar backup');
-  }
-  return res.json();
-}
+export const linkRelation = (bookmarkId, noteId, notes = '') =>
+  request('/relations/link', { method: 'POST', body: { bookmarkId, noteId, notes }, fallbackError: 'Error al vincular elemento' });
 
+export const unlinkRelation = (bookmarkId, noteId) =>
+  request('/relations/unlink', { method: 'DELETE', body: { bookmarkId, noteId }, fallbackError: 'Error al desvincular elemento' });
 
+/* Trash */
+
+export const fetchTrash = () =>
+  request('/trash', { fallbackError: 'Error al obtener elementos de la papelera' });
+
+export const restoreTrashItem = (type, id) =>
+  request(`/trash/${type}/${id}/restore`, { method: 'POST', fallbackError: 'Error al restaurar elemento' });
+
+export const destroyTrashItem = (type, id) =>
+  request(`/trash/${type}/${id}`, { method: 'DELETE', fallbackError: 'Error al eliminar definitivamente' });
+
+export const emptyTrash = () =>
+  request('/trash', { method: 'DELETE', fallbackError: 'Error al vaciar papelera' });
+
+/* Backup */
+
+export const BACKUP_EXPORT_URL = `${BASE_URL}/backup/export`;
+
+export const importBackup = (backupData, mode = 'append') =>
+  request('/backup/import', { method: 'POST', body: { ...backupData, mode }, fallbackError: 'Error al importar backup' });
+
+export const importHtmlBookmarks = (htmlContent, defaultCategory = 'Navegador') =>
+  request('/backup/import-html', { method: 'POST', body: { htmlContent, defaultCategory }, fallbackError: 'Error al importar archivo HTML' });

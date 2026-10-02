@@ -1,9 +1,9 @@
 import React, { useState, memo } from 'react';
-import { 
-  GitMerge, 
-  Edit3, 
-  Trash2, 
-  Plus, 
+import {
+  GitMerge,
+  Edit3,
+  Trash2,
+  Plus,
   ChevronDown,
   Maximize2
 } from 'lucide-react';
@@ -20,26 +20,26 @@ const NoteGridRow = memo(function NoteGridRow({
   onSelectNote
 }) {
   const accentColor = '#6366f1';
-  const formattedDate = n.updated_at 
+  const formattedDate = n.updated_at
     ? new Date(n.updated_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
     : '';
 
   return (
-    <div 
+    <div
       className={`grid-item ${isExpanded ? 'expanded' : ''}`}
       style={{ '--accent': accentColor }}
     >
       {/* Main compact row */}
-      <div 
+      <div
         className="grid-row"
         onClick={onToggleExpand}
       >
         {/* Title cell */}
         <div className="grid-cell title-cell">
           <span className="title-accent" style={{ background: accentColor }} />
-          <span className="title-text font-medium" title={n.title}>
+          <button type="button" className="title-text font-medium card-title-link" title={n.title} aria-expanded={isExpanded}>
             {n.title}
-          </span>
+          </button>
         </div>
 
         {/* Category cell */}
@@ -73,6 +73,7 @@ const NoteGridRow = memo(function NoteGridRow({
             onClick={() => onSelectNote(n)}
             className="icon-button"
             title="Leer nota completa"
+            aria-label="Leer nota completa"
           >
             <Maximize2 size={14} />
           </button>
@@ -81,6 +82,7 @@ const NoteGridRow = memo(function NoteGridRow({
             onClick={() => onViewRelated(n)}
             className="icon-button"
             title="Ver marcadores relacionados"
+            aria-label="Ver marcadores relacionados"
           >
             <GitMerge size={14} />
           </button>
@@ -89,6 +91,7 @@ const NoteGridRow = memo(function NoteGridRow({
             onClick={() => onOpenManualLink(n)}
             className="icon-button"
             title="Vincular con marcador"
+            aria-label="Vincular con marcador"
           >
             <Plus size={14} />
           </button>
@@ -97,6 +100,7 @@ const NoteGridRow = memo(function NoteGridRow({
             onClick={() => onEdit(n)}
             className="icon-button"
             title="Editar"
+            aria-label="Editar"
           >
             <Edit3 size={14} />
           </button>
@@ -105,6 +109,7 @@ const NoteGridRow = memo(function NoteGridRow({
             onClick={() => onDelete(n)}
             className="icon-button danger"
             title="Mover a papelera"
+            aria-label="Mover a papelera"
           >
             <Trash2 size={14} />
           </button>
@@ -127,7 +132,8 @@ const NoteGridRow = memo(function NoteGridRow({
             <div>
               <div className="detail-label">Vista previa del contenido</div>
               <div className="bg-black/30 p-4 rounded-lg border border-white/5 max-h-56 overflow-y-auto">
-                <MarkdownViewer content={n.content} />
+                {/* Parsed only for the expanded row, not for every row in the table */}
+                {isExpanded && <MarkdownViewer content={n.content} />}
               </div>
             </div>
 

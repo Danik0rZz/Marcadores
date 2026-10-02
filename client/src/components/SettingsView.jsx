@@ -7,7 +7,8 @@ import {
   FileUp, 
   FileText, 
   Bookmark, 
-  HardDrive
+  HardDrive,
+  Replace
 } from 'lucide-react';
 import { 
   fetchTrash, 
@@ -16,7 +17,7 @@ import {
   emptyTrash, 
   importBackup, 
   importHtmlBookmarks,
-  API_BASE_URL 
+  BACKUP_EXPORT_URL
 } from '../api';
 
 export default function SettingsView({
@@ -24,101 +25,91 @@ export default function SettingsView({
   onShowToast
 }) {
   const [trashItems, setTrashItems] = useState([]);
-  const [loadingTrash, setLoadingTrash] = useState(false);
+  const [loadingTrash, setLoadingTrash] = useState(true);
+  const [trashError, setTrashError] = useState(null);
+
+  // Without the error state a server failure would look like an empty trash.
+  const applyTrashResult = (items, error) => {
+    if (items) setTrashItems(items);
+    setTrashError(error);
+    setLoadingTrash(false);
+  };
 
   const loadTrash = async () => {
-    setLoadingTrash(true);
     try {
-      const items = await fetchTrash();
-      setTrashItems(items);
+      applyTrashResult(await fetchTrash(), null);
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingTrash(false);
+      applyTrashResult(null, err.message);
     }
   };
 
   useEffect(() => {
-    loadTrash();
+    let cancelled = false;
+    fetchTrash()
+      .then(items => !cancelled && applyTrashResult(items, null))
+      .catch(err => !cancelled && applyTrashResult(null, err.message));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleRestore = async (type, id) => {
+  const runAction = async (action, successTitle, successMessage) => {
     try {
-      await restoreTrashItem(type, id);
+      const result = await action();
       await loadTrash();
       onRefreshData();
-      if (onShowToast) onShowToast('Elemento restaurado', 'Ha vuelto a su categoría original.');
+      onShowToast(successTitle, typeof successMessage === 'function' ? successMessage(result) : successMessage);
     } catch (err) {
-      alert(err.message);
+      onShowToast('Error', err.message, true);
     }
   };
 
-  const handleDestroy = async (type, id) => {
+  const handleRestore = (type, id) =>
+    runAction(() => restoreTrashItem(type, id), 'Elemento restaurado', 'Ha vuelto a su categoría original.');
+
+  const handleDestroy = (type, id) => {
     if (!window.confirm('¿Eliminar este elemento definitivamente? Esta acción no se puede deshacer.')) return;
-    try {
-      await destroyTrashItem(type, id);
-      await loadTrash();
-      onRefreshData();
-      if (onShowToast) onShowToast('Elemento eliminado', 'El registro se borró definitivamente.');
-    } catch (err) {
-      alert(err.message);
-    }
+    runAction(() => destroyTrashItem(type, id), 'Elemento eliminado', 'El registro se borró definitivamente.');
   };
 
-  const handleEmptyTrash = async () => {
+  const handleEmptyTrash = () => {
     if (!window.confirm('¿Estás seguro de vaciar toda la papelera permanentemente?')) return;
-    try {
-      await emptyTrash();
-      await loadTrash();
-      onRefreshData();
-      if (onShowToast) onShowToast('Papelera vaciada', 'Se eliminaron todos los elementos archivados.');
-    } catch (err) {
-      alert(err.message);
-    }
+    runAction(emptyTrash, 'Papelera vaciada', 'Se eliminaron todos los elementos archivados.');
   };
 
   const handleExportJson = () => {
-    window.location.href = `${API_BASE_URL}/backup/export`;
+    window.location.href = BACKUP_EXPORT_URL;
   };
 
-  const handleImportJsonFile = async (e) => {
+  const readSelectedFile = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    e.target.value = ''; // allow choosing the same file again
+    return file ? file.text() : null;
+  };
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const json = JSON.parse(event.target.result);
-        await importBackup(json, 'append');
-        onRefreshData();
-        loadTrash();
-        if (onShowToast) onShowToast('Copia importada', 'Los elementos fueron integrados a la base de datos.');
-      } catch (err) {
-        alert('Error al procesar el archivo JSON: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+  const handleImportJsonFile = async (e, mode) => {
+    const pending = readSelectedFile(e);
+    if (!pending) return;
+    if (mode === 'overwrite' &&
+        !window.confirm('Se borrarán TODOS los marcadores, notas, tags y vínculos actuales y se reemplazarán por el contenido del archivo. ¿Continuar?')) {
+      return;
+    }
+
+    let json;
+    try {
+      json = JSON.parse(await pending);
+    } catch {
+      onShowToast('Error', 'El archivo no es un JSON válido.', true);
+      return;
+    }
+    runAction(() => importBackup(json, mode), 'Copia importada', (res) => res.message);
   };
 
   const handleImportHtmlFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const html = event.target.result;
-        const res = await importHtmlBookmarks(html, 'Importados');
-        onRefreshData();
-        loadTrash();
-        if (onShowToast) onShowToast('Marcadores importados', `Se importaron ${res.count || 0} marcadores.`);
-      } catch (err) {
-        alert('Error al importar marcadores HTML: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+    const pending = readSelectedFile(e);
+    if (!pending) return;
+    const html = await pending;
+    runAction(() => importHtmlBookmarks(html, 'Importados'), 'Marcadores importados', (res) => res.message);
   };
 
   return (
@@ -162,7 +153,18 @@ export default function SettingsView({
                     type="file"
                     accept=".json"
                     className="hidden"
-                    onChange={handleImportJsonFile}
+                    onChange={(e) => handleImportJsonFile(e, 'append')}
+                  />
+                </label>
+
+                <label className="button ghost border border-white/10 cursor-pointer">
+                  <Replace size={15} />
+                  <span>Reemplazar todo desde JSON</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => handleImportJsonFile(e, 'overwrite')}
                   />
                 </label>
 
@@ -219,6 +221,10 @@ export default function SettingsView({
                 <div className="py-8 text-center text-xs text-zinc-500">
                   Cargando papelera...
                 </div>
+              ) : trashError ? (
+                <div className="py-8 text-center text-xs text-red-300" role="alert">
+                  No se pudo cargar la papelera: {trashError}
+                </div>
               ) : trashItems.length === 0 ? (
                 <div className="py-12 text-center text-zinc-500 text-xs">
                   <Trash2 size={24} className="mx-auto mb-2 opacity-30" />
@@ -245,6 +251,7 @@ export default function SettingsView({
                             onClick={() => handleRestore(item.type, item.id)}
                             className="icon-button text-emerald-400"
                             title="Restaurar a biblioteca"
+                            aria-label={`Restaurar ${item.title}`}
                           >
                             <RotateCcw size={14} />
                           </button>
@@ -253,6 +260,7 @@ export default function SettingsView({
                             onClick={() => handleDestroy(item.type, item.id)}
                             className="icon-button danger"
                             title="Eliminar definitivamente"
+                            aria-label={`Eliminar definitivamente ${item.title}`}
                           >
                             <Trash2 size={14} />
                           </button>

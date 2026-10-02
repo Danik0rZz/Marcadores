@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { X, Link2, Bookmark, FileText, Search } from 'lucide-react';
+import Dialog from './Dialog';
 
+/** Render only while open, with a `key` per source item so its state starts fresh. */
 export default function ManualLinkModal({
-  isOpen,
   onClose,
   sourceItem,
   sourceType, // 'bookmark' | 'note'
   availableTargets = [], // If source is bookmark, targets are notes, and vice versa
   onLink
 }) {
+  const id = useId();
   const isBookmark = sourceType === 'bookmark';
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [notes, setNotes] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (!isOpen || !sourceItem) return null;
+  if (!sourceItem) return null;
 
   const filteredTargets = availableTargets.filter((t) => {
     const term = searchFilter.toLowerCase();
@@ -41,9 +43,13 @@ export default function ManualLinkModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center items-center p-4">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
-        
+    <Dialog
+      onClose={onClose}
+      labelledBy={`${id}-title`}
+      layerClassName="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center items-center p-4"
+      className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden outline-none"
+    >
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -51,11 +57,13 @@ export default function ManualLinkModal({
               <Link2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Vincular Manualmente</h2>
+              <h2 id={`${id}-title`} className="text-base font-bold text-white">Vincular Manualmente</h2>
               <p className="text-xs text-slate-400">Conectar un marcador con una nota específica</p>
             </div>
           </div>
-          <button 
+          <button
+            type="button"
+            aria-label="Cerrar"
             onClick={onClose}
             className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
@@ -78,13 +86,15 @@ export default function ManualLinkModal({
 
           {/* Search Target */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
+            <label htmlFor={`${id}-target`} className="block text-xs font-semibold text-slate-300 mb-1">
               Seleccionar {isBookmark ? 'Nota a vincular' : 'Marcador a vincular'} *
             </label>
             <div className="relative mb-2">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
+                data-autofocus
+                aria-label="Filtrar destinos por título o categoría"
                 placeholder="Filtrar por título o categoría..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
@@ -93,6 +103,7 @@ export default function ManualLinkModal({
             </div>
 
             <select
+              id={`${id}-target`}
               required
               size={5}
               value={selectedTargetId}
@@ -109,10 +120,11 @@ export default function ManualLinkModal({
 
           {/* Relation theme/note */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
+            <label htmlFor={`${id}-notes`} className="block text-xs font-semibold text-slate-300 mb-1">
               Tema o descripción del vínculo (opcional)
             </label>
             <input
+              id={`${id}-notes`}
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -139,8 +151,6 @@ export default function ManualLinkModal({
             </button>
           </div>
         </form>
-
-      </div>
-    </div>
+    </Dialog>
   );
 }

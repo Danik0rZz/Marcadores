@@ -1,22 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Bookmark, 
-  Globe, 
-  Sparkles, 
-  Loader2, 
-  Code, 
-  Database, 
-  Cpu, 
-  Palette, 
-  Briefcase, 
-  BookOpen, 
-  Music, 
-  Video, 
+import React, { useEffect, useId, useState } from 'react';
+import {
+  X,
+  Bookmark,
+  Globe,
+  Sparkles,
+  Loader2,
+  Code,
+  Database,
+  Cpu,
+  Palette,
+  Briefcase,
+  BookOpen,
+  Video,
   Folder
 } from 'lucide-react';
 import { fetchBookmarkMetadata } from '../api';
 import { getFaviconUrl } from '../utils/favicon';
+import { useFormState, confirmDiscard } from '../hooks/useFormState';
+import Dialog from './Dialog';
+import TagInput from './TagInput';
+import TaxonomyFields from './TaxonomyFields';
 
 const COLOR_PALETTE = [
   '#10b981', // Emerald (Default)
@@ -56,424 +59,311 @@ function previewDomain(url) {
   }
 }
 
+function isWebUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Render only while open, with a `key` per edited bookmark: state is
+ * initialized from `initialData` on mount instead of being reset by an effect.
+ * `onSubmit` returns a promise resolving to true when the save succeeded.
+ */
 export default function BookmarkFormModal({
-  isOpen,
   onClose,
   onSubmit,
   initialData = null,
   taxonomy = {}
 }) {
-  const [title, setTitle] = useState('');
-  const [url, setUrl] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [subcategory, setSubcategory] = useState('');
-  const [theme, setTheme] = useState('');
-  const [color, setColor] = useState('#10b981');
-  const [icon, setIcon] = useState('bookmark');
-  const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState([]);
+  const id = useId();
+  const [form, setField, isDirty, setForm] = useFormState({
+    title: initialData?.title || '',
+    url: initialData?.url || '',
+    description: initialData?.description || '',
+    category: initialData?.category || '',
+    subcategory: initialData?.subcategory || '',
+    theme: initialData?.theme || initialData?.reason || '',
+    color: initialData?.color || '#10b981',
+    icon: initialData?.icon || 'bookmark',
+    tags: initialData?.tags || []
+  });
   const [error, setError] = useState('');
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // The favicon preview hits a remote service: wait until typing pauses.
+  const [faviconUrl, setFaviconUrl] = useState(form.url);
   useEffect(() => {
-    if (initialData) {
-      setTitle(initialData.title || '');
-      setUrl(initialData.url || '');
-      setDescription(initialData.description || '');
-      setCategory(initialData.category || '');
-      setSubcategory(initialData.subcategory || '');
-      setTheme(initialData.theme || initialData.reason || '');
-      setColor(initialData.color || '#10b981');
-      setIcon(initialData.icon || 'bookmark');
-      setTags(initialData.tags || []);
-    } else {
-      setTitle('');
-      setUrl('');
-      setDescription('');
-      setCategory('');
-      setSubcategory('');
-      setTheme('');
-      setColor('#10b981');
-      setIcon('bookmark');
-      setTags([]);
-    }
-    setError('');
-  }, [initialData, isOpen]);
+    const timer = setTimeout(() => setFaviconUrl(form.url), 500);
+    return () => clearTimeout(timer);
+  }, [form.url]);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
+  const requestClose = () => {
+    if (!isSubmitting && confirmDiscard(isDirty)) onClose();
+  };
 
   const handleAutoFetch = async () => {
-    if (!url.trim()) return;
+    if (!isWebUrl(form.url.trim())) {
+      setError('Ingresá una URL que empiece con http:// o https:// para autodetectar.');
+      return;
+    }
     setIsFetchingMeta(true);
     try {
-      const meta = await fetchBookmarkMetadata(url.trim());
-      if (meta.title && !title) setTitle(meta.title);
-      if (meta.description && !description) setDescription(meta.description);
-    } catch {
-      // Ignore
+      const meta = await fetchBookmarkMetadata(form.url.trim());
+      // Fill only fields that are still empty when the response arrives:
+      // the user may have typed a title while the request was in flight.
+      setForm(prev => ({
+        ...prev,
+        title: prev.title || meta.title || '',
+        description: prev.description || meta.description || ''
+      }));
+    } catch (err) {
+      setError(err.message);
     } finally {
       setIsFetchingMeta(false);
     }
   };
 
-  const handleAddTag = () => {
-    const clean = tagInput.trim().toLowerCase().replace(/^#/, '');
-    if (clean && !tags.includes(clean)) {
-      setTags([...tags, clean]);
-      setTagInput('');
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove) => {
-    setTags(tags.filter((t) => t !== tagToRemove));
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !url.trim() || !category.trim()) {
+    if (isSubmitting) return;
+    if (!form.title.trim() || !form.url.trim() || !form.category.trim()) {
       setError('Por favor completá Título, URL y Categoría.');
       return;
     }
-
     // Only http(s): a javascript: or data: URL would run code when opened.
-    let protocol = '';
-    try {
-      protocol = new URL(url.trim()).protocol;
-    } catch {
-      // handled below
-    }
-    if (protocol !== 'http:' && protocol !== 'https:') {
+    if (!isWebUrl(form.url.trim())) {
       setError('Por favor ingresá una URL válida que empiece con http:// o https://');
       return;
     }
 
-    onSubmit({
-      title: title.trim(),
-      url: url.trim(),
-      description: description.trim(),
-      category: category.trim(),
-      subcategory: subcategory.trim(),
-      theme: theme.trim(),
-      color,
-      icon,
-      tags
+    setIsSubmitting(true);
+    const saved = await onSubmit({
+      title: form.title.trim(),
+      url: form.url.trim(),
+      description: form.description.trim(),
+      category: form.category.trim(),
+      subcategory: form.subcategory.trim(),
+      theme: form.theme.trim(),
+      color: form.color,
+      icon: form.icon,
+      tags: form.tags
     });
+    if (!saved) setIsSubmitting(false);
   };
 
-  const SelectedIconComponent = ICONS_MAP[icon] || Bookmark;
-  const faviconSrc = getFaviconUrl(url);
-  const subcategoryOptions = category
-    ? (taxonomy?.subcategories || [])
-        .filter(s => s.category.toLowerCase() === category.toLowerCase())
-        .map(s => s.subcategory)
-    : (taxonomy?.uniqueSubcategories || []);
-  const themeOptions = Array.from(new Set(
-    (taxonomy?.themes || [])
-      .filter(t => !category || t.category.toLowerCase() === category.toLowerCase())
-      .filter(t => !subcategory || t.subcategory.toLowerCase() === subcategory.toLowerCase())
-      .map(t => t.theme)
-  ));
+  const SelectedIconComponent = ICONS_MAP[form.icon] || Bookmark;
+  const faviconSrc = getFaviconUrl(faviconUrl);
 
   return (
-    <div 
-      className="modal-layer"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal wide">
-        {/* Header */}
-        <div className="modal-head">
-          <div className="modal-head-copy">
-            <h2>{initialData ? 'Editar Marcador' : 'Nuevo Marcador'}</h2>
-            <p>Configurá la taxonomía, URL y aspecto visual con previsualización en tiempo real.</p>
+    <Dialog onClose={requestClose} labelledBy={`${id}-title`} className="modal wide">
+      {/* Header */}
+      <div className="modal-head">
+        <div className="modal-head-copy">
+          <h2 id={`${id}-title`}>{initialData ? 'Editar Marcador' : 'Nuevo Marcador'}</h2>
+          <p>Configurá la taxonomía, URL y aspecto visual con previsualización en tiempo real.</p>
+        </div>
+        <button
+          type="button"
+          onClick={requestClose}
+          className="icon-button"
+          title="Cerrar modal (Esc)"
+          aria-label="Cerrar"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Body with two columns: Form & Live Preview */}
+      <form onSubmit={handleSubmit} className="modal-body">
+        {error && (
+          <div role="alert" className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-xs font-medium">
+            {error}
           </div>
-          <button 
-            type="button" 
-            onClick={onClose} 
-            className="icon-button"
-            title="Cerrar modal (Esc)"
-          >
-            <X size={18} />
-          </button>
+        )}
+
+        <div className="bookmark-appearance">
+          {/* Left Column: Form inputs */}
+          <div className="appearance-controls">
+            <div className="field">
+              <label htmlFor={`${id}-name`}>Título del marcador *</label>
+              <input
+                id={`${id}-name`}
+                type="text"
+                required
+                data-autofocus
+                placeholder="ej. Documentación de React 19"
+                value={form.title}
+                onChange={(e) => setField('title', e.target.value)}
+                className="input"
+              />
+            </div>
+
+            {/* URL with Autofetch button */}
+            <div className="field">
+              <label htmlFor={`${id}-url`}>URL / Enlace web *</label>
+              <div className="flex gap-2">
+                <input
+                  id={`${id}-url`}
+                  type="url"
+                  required
+                  placeholder="https://ejemplo.com"
+                  value={form.url}
+                  onChange={(e) => setField('url', e.target.value)}
+                  className="input flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={handleAutoFetch}
+                  disabled={isFetchingMeta || !form.url.trim()}
+                  className="button small ghost text-emerald-400 hover:text-emerald-300"
+                  title="Autocompletar título y descripción desde la web"
+                >
+                  {isFetchingMeta ? (
+                    <Loader2 size={14} className="animate-spin" aria-label="Buscando datos" />
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>Autodetectar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <TaxonomyFields
+              taxonomy={taxonomy}
+              values={form}
+              onChange={setField}
+              layout="stack"
+            />
+
+            <TagInput tags={form.tags} onChange={(tags) => setField('tags', tags)} />
+
+            <div className="field">
+              <label htmlFor={`${id}-description`}>Descripción o notas rápidas</label>
+              <textarea
+                id={`${id}-description`}
+                rows={2}
+                placeholder="Breve resumen del contenido o para qué sirve este recurso..."
+                value={form.description}
+                onChange={(e) => setField('description', e.target.value)}
+                className="textarea"
+              />
+            </div>
+
+            {/* Appearance: Color Picker */}
+            <div className="appearance-group" role="radiogroup" aria-labelledby={`${id}-color-label`}>
+              <span className="appearance-label" id={`${id}-color-label`}>Color de acento temático</span>
+              <div className="color-picker">
+                {COLOR_PALETTE.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={form.color === c}
+                    aria-label={c}
+                    onClick={() => setField('color', c)}
+                    className={`color-option ${form.color === c ? 'selected' : ''}`}
+                    style={{ '--color': c }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Appearance: Icon Picker */}
+            <div className="appearance-group" role="radiogroup" aria-labelledby={`${id}-icon-label`}>
+              <span className="appearance-label" id={`${id}-icon-label`}>Icono representativo</span>
+              <div className="icon-picker">
+                {Object.keys(ICONS_MAP).map(key => {
+                  const IconComp = ICONS_MAP[key];
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={form.icon === key}
+                      aria-label={key}
+                      onClick={() => setField('icon', key)}
+                      className={`icon-option ${form.icon === key ? 'selected' : ''}`}
+                      title={key}
+                    >
+                      <IconComp size={16} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Live Preview Panel */}
+          <div className="bookmark-preview-panel" aria-hidden="true">
+            <div className="preview-panel-title">Previsualización en tiempo real</div>
+
+            <div className="text-xs text-zinc-500 mb-2">Vista en tarjeta:</div>
+            <div
+              className="bookmark-preview-card"
+              style={{ '--accent': form.color }}
+            >
+              <div className="preview-card-head">
+                <div className="preview-symbol">
+                  {faviconSrc ? (
+                    <img src={faviconSrc} alt="" className="w-4 h-4 object-contain rounded" onError={(e) => { e.target.style.display = 'none'; }} />
+                  ) : (
+                    <SelectedIconComponent size={18} />
+                  )}
+                </div>
+                <div className="preview-card-copy">
+                  <strong>{form.title || 'Título del marcador'}</strong>
+                  <div className="preview-taxonomy">
+                    {form.category || 'Categoría'} {form.subcategory ? `/ ${form.subcategory}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <div className="preview-description">
+                {form.description || 'Aquí aparecerá la descripción del enlace a medida que la escribas...'}
+              </div>
+
+              <div className="preview-card-foot">
+                <Globe size={11} />
+                <div className="preview-card-domain">
+                  {previewDomain(form.url)}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 p-3 rounded-lg bg-black/40 border border-white/5 text-[11px] text-zinc-400 space-y-1">
+              <div><strong>Acento:</strong> <span className="font-mono">{form.color}</span></div>
+              <div><strong>Icono:</strong> <span className="font-mono">{form.icon}</span></div>
+              <div><strong>Tags:</strong> {form.tags.length > 0 ? form.tags.map(t => `#${t}`).join(', ') : 'Ninguno'}</div>
+            </div>
+          </div>
         </div>
 
-        {/* Body with two columns: Form & Live Preview */}
-        <form onSubmit={handleSubmit} className="modal-body">
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-xs font-medium">
-              {error}
-            </div>
-          )}
-
-          <div className="bookmark-appearance">
-            {/* Left Column: Form inputs */}
-            <div className="appearance-controls">
-              {/* Title */}
-              <div className="field">
-                <label>Título del marcador *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="ej. Documentación de React 19"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="input"
-                />
-              </div>
-
-              {/* URL with Autofetch button */}
-              <div className="field">
-                <label>URL / Enlace web *</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    required
-                    placeholder="https://ejemplo.com"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className="input flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAutoFetch}
-                    disabled={isFetchingMeta || !url.trim()}
-                    className="button small ghost text-emerald-400 hover:text-emerald-300"
-                    title="Autocompletar título y descripción desde la web"
-                  >
-                    {isFetchingMeta ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <>
-                        <Sparkles size={14} />
-                        <span>Autodetectar</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Taxonomy fields: Category, Subcategory, Theme */}
-              <div className="form-grid">
-                <div className="field">
-                  <label>Categoría *</label>
-                  <input
-                    type="text"
-                    required
-                    list="categoryOptions"
-                    placeholder="ej. Desarrollo"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="input"
-                  />
-                  <datalist id="categoryOptions">
-                    {(taxonomy?.categories || []).map(cat => (
-                      <option key={cat} value={cat} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <div className="field">
-                  <label>Subcategoría</label>
-                  <input
-                    type="text"
-                    list="subcatOptions"
-                    placeholder="ej. Frontend"
-                    value={subcategory}
-                    onChange={(e) => setSubcategory(e.target.value)}
-                    className="input"
-                  />
-                  <datalist id="subcatOptions">
-                    {subcategoryOptions.map(s => (
-                      <option key={s} value={s} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              <div className="field">
-                <label>Tema</label>
-                <input
-                  type="text"
-                  list="themeOptions"
-                  placeholder="ej. Estudio y Referencia Técnica"
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
-                  className="input"
-                />
-                <datalist id="themeOptions">
-                  {themeOptions.map(r => (
-                    <option key={r} value={r} />
-                  ))}
-                </datalist>
-              </div>
-
-              {/* Tags */}
-              <div className="field">
-                <label>Etiquetas (Tags)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Escribí un tag y presioná enter..."
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
-                    className="input flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddTag}
-                    className="button small"
-                  >
-                    Añadir
-                  </button>
-                </div>
-                {tags.length > 0 && (
-                  <div className="tag-row mt-2">
-                    {tags.map(t => (
-                      <span key={t} className="tag">
-                        #{t}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(t)}
-                          className="ml-1 text-zinc-400 hover:text-red-400"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Description */}
-              <div className="field">
-                <label>Descripción o notas rápidas</label>
-                <textarea
-                  rows={2}
-                  placeholder="Breve resumen del contenido o para qué sirve este recurso..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="textarea"
-                />
-              </div>
-
-              {/* Appearance: Color Picker */}
-              <div className="appearance-group">
-                <span className="appearance-label">Color de acento temático</span>
-                <div className="color-picker">
-                  {COLOR_PALETTE.map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setColor(c)}
-                      className={`color-option ${color === c ? 'selected' : ''}`}
-                      style={{ '--color': c }}
-                      title={c}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Appearance: Icon Picker */}
-              <div className="appearance-group">
-                <span className="appearance-label">Icono representativo</span>
-                <div className="icon-picker">
-                  {Object.keys(ICONS_MAP).map(key => {
-                    const IconComp = ICONS_MAP[key];
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setIcon(key)}
-                        className={`icon-option ${icon === key ? 'selected' : ''}`}
-                        title={key}
-                      >
-                        <IconComp size={16} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Live Preview Panel */}
-            <div className="bookmark-preview-panel">
-              <div className="preview-panel-title">Previsualización en tiempo real</div>
-
-              <div className="text-xs text-zinc-500 mb-2">Vista en tarjeta:</div>
-              <div 
-                className="bookmark-preview-card" 
-                style={{ '--accent': color }}
-              >
-                <div className="preview-card-head">
-                  <div className="preview-symbol">
-                    {faviconSrc ? (
-                      <img src={faviconSrc} alt="" className="w-4 h-4 object-contain rounded" onError={(e) => { e.target.style.display = 'none'; }} />
-                    ) : (
-                      <SelectedIconComponent size={18} />
-                    )}
-                  </div>
-                  <div className="preview-card-copy">
-                    <strong>{title || 'Título del marcador'}</strong>
-                    <div className="preview-taxonomy">
-                      {category || 'Categoría'} {subcategory ? `/ ${subcategory}` : ''}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="preview-description">
-                  {description || 'Aquí aparecerá la descripción del enlace a medida que la escribas...'}
-                </div>
-
-                <div className="preview-card-foot">
-                  <Globe size={11} />
-                  <div className="preview-card-domain">
-                    {previewDomain(url)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 p-3 rounded-lg bg-black/40 border border-white/5 text-[11px] text-zinc-400 space-y-1">
-                <div><strong>Acento:</strong> <span className="font-mono">{color}</span></div>
-                <div><strong>Icono:</strong> <span className="font-mono">{icon}</span></div>
-                <div><strong>Tags:</strong> {tags.length > 0 ? tags.map(t => `#${t}`).join(', ') : 'Ninguno'}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer actions */}
-          <div className="modal-footer mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              className="button ghost"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="button primary"
-            >
-              {initialData ? 'Guardar Cambios' : 'Crear Marcador'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {/* Footer actions */}
+        <div className="modal-footer mt-6">
+          <button
+            type="button"
+            onClick={requestClose}
+            className="button ghost"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="button primary"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Guardando…' : initialData ? 'Guardar Cambios' : 'Crear Marcador'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
