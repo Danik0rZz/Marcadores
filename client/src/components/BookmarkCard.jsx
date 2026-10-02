@@ -9,7 +9,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { getFaviconUrl } from '../utils/favicon';
-import { checkBookmarkHealth } from '../api';
+import { checkBookmarkHealth, IS_BROWSER_BACKEND } from '../api';
 
 function isInnerControl(event) {
   const control = event.target.closest('a, button, input, textarea, select');
@@ -123,7 +123,8 @@ export default function BookmarkCard({
         </div>
 
         <div className="card-actions">
-          {/* Health check */}
+          {/* Health check: reaching another website needs the local server */}
+          {!IS_BROWSER_BACKEND && (
           <button
             type="button"
             onClick={handleCheckHealth}
@@ -138,6 +139,7 @@ export default function BookmarkCard({
               <Activity size={14} />
             )}
           </button>
+          )}
 
           {/* View relations */}
           <button

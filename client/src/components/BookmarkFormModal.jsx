@@ -14,7 +14,7 @@ import {
   Video,
   Folder
 } from 'lucide-react';
-import { fetchBookmarkMetadata } from '../api';
+import { fetchBookmarkMetadata, IS_BROWSER_BACKEND } from '../api';
 import { getFaviconUrl } from '../utils/favicon';
 import { useFormState, confirmDiscard } from '../hooks/useFormState';
 import Dialog from './Dialog';
@@ -216,6 +216,8 @@ export default function BookmarkFormModal({
                   onChange={(e) => setField('url', e.target.value)}
                   className="input flex-1"
                 />
+                {/* Reading another website needs the local server */}
+                {!IS_BROWSER_BACKEND && (
                 <button
                   type="button"
                   onClick={handleAutoFetch}
@@ -232,6 +234,7 @@ export default function BookmarkFormModal({
                     </>
                   )}
                 </button>
+                )}
               </div>
             </div>
 

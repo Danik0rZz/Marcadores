@@ -17,7 +17,9 @@ import {
   emptyTrash, 
   importBackup, 
   importHtmlBookmarks,
-  BACKUP_EXPORT_URL
+  downloadBackup,
+  fetchStorageInfo,
+  IS_BROWSER_BACKEND
 } from '../api';
 
 export default function SettingsView({
@@ -42,6 +44,15 @@ export default function SettingsView({
       applyTrashResult(null, err.message);
     }
   };
+
+  const [storage, setStorage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchStorageInfo().then(info => !cancelled && setStorage(info)).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,8 +88,12 @@ export default function SettingsView({
     runAction(emptyTrash, 'Papelera vaciada', 'Se eliminaron todos los elementos archivados.');
   };
 
-  const handleExportJson = () => {
-    window.location.href = BACKUP_EXPORT_URL;
+  const handleExportJson = async () => {
+    try {
+      await downloadBackup();
+    } catch (err) {
+      onShowToast('Error', err.message, true);
+    }
   };
 
   const readSelectedFile = (e) => {
@@ -184,16 +199,36 @@ export default function SettingsView({
 
           <section className="panel">
             <div className="panel-head">
-              <span className="panel-title">Base de Datos Local SQLite</span>
+              <span className="panel-title">
+                {IS_BROWSER_BACKEND ? 'Datos guardados en este navegador' : 'Base de Datos Local SQLite'}
+              </span>
             </div>
             <div className="p-5 space-y-3 text-xs text-zinc-300">
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-emerald-400" />
-                <span>Archivo físico de persistencia: <strong>data/app.db</strong></span>
+                {IS_BROWSER_BACKEND ? (
+                  <span>SQLite (WebAssembly) guardado en el <strong>IndexedDB</strong> de este navegador</span>
+                ) : (
+                  <span>Archivo físico de persistencia: <strong>data/app.db</strong> (o la ruta de <code>DB_PATH</code>)</span>
+                )}
               </div>
-              <p className="text-zinc-500">
-                Operando en modo WAL (Write-Ahead Logging) con integridad referencial, índices compuestos y caché en RAM para latencia sub-milisegundo.
-              </p>
+              {IS_BROWSER_BACKEND ? (
+                <p className="text-zinc-500">
+                  Tus datos no salen de este navegador: no se suben a ningún servidor. Si borrás los datos del sitio,
+                  usás otro navegador o una ventana privada, no vas a verlos. Exportá un backup JSON para conservarlos
+                  o pasarlos a otro equipo; el mismo archivo funciona con la versión local.
+                </p>
+              ) : (
+                <p className="text-zinc-500">
+                  Operando en modo WAL (Write-Ahead Logging) con integridad referencial, índices compuestos y caché en RAM para latencia sub-milisegundo.
+                </p>
+              )}
+              {storage && !storage.persistent && (
+                <p role="alert" className="text-red-300">
+                  Este navegador no permite guardar datos ({storage.error}). Los cambios se perderán al cerrar la página:
+                  exportá un backup antes de salir.
+                </p>
+              )}
             </div>
           </section>
         </div>

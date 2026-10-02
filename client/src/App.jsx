@@ -32,10 +32,21 @@ import {
   updateNote,
   trashNote,
   linkRelation,
-  unlinkRelation
+  unlinkRelation,
+  IS_BROWSER_BACKEND
 } from './api';
 
-import { Bookmark, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Bookmark, FileText, CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+
+const WEB_NOTICE_KEY = 'nexus:web-notice-dismissed';
+
+function readNoticeDismissed() {
+  try {
+    return localStorage.getItem(WEB_NOTICE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 const EMPTY_FILTERS = { category: '', subcategory: '', theme: '', tag: '' };
 const SEARCH_DEBOUNCE_MS = 280;
@@ -49,6 +60,16 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [bookmarkViewMode, setBookmarkViewMode] = useState('grid'); // 'grid' | 'table'
   const [noteViewMode, setNoteViewMode] = useState('grid');
+  const [isWebNoticeDismissed, setIsWebNoticeDismissed] = useState(readNoticeDismissed);
+
+  const dismissWebNotice = () => {
+    setIsWebNoticeDismissed(true);
+    try {
+      localStorage.setItem(WEB_NOTICE_KEY, '1');
+    } catch {
+      // storage blocked: the notice just comes back next visit
+    }
+  };
 
   // Search & filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -319,6 +340,19 @@ export default function App() {
         />
 
         <div className="content">
+          {IS_BROWSER_BACKEND && !isWebNoticeDismissed && (
+            <div role="note" className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-100 text-sm flex items-start gap-3">
+              <Info size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+              <span className="flex-1">
+                Versión web: tus datos se guardan solo en este navegador, no en ningún servidor.
+                Exportá un backup desde <strong>Ajustes y Backups</strong> para conservarlos o llevarlos a otro equipo.
+              </span>
+              <button type="button" onClick={dismissWebNotice} className="icon-button" aria-label="Cerrar aviso" title="Cerrar aviso">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {error && (
             <div role="alert" className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-center gap-3">
               <AlertCircle size={18} />

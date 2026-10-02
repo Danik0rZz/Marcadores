@@ -9,6 +9,7 @@ data/*.db-shm
 
 # Build output
 client/dist/
+client/dist-pages/
 
 # Local tooling state
 .atl/

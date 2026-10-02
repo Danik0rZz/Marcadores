@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --import ./tests/setup.js --test tests/api.test.js"
+    "test": "node --import ./tests/setup.js --test tests/api.test.js",
+    "test:browser-db": "node --import ./tests/setup.js --import ./tests/sqljs/register.js --test tests/api.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
