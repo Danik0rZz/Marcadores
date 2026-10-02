@@ -10,6 +10,7 @@ import {
   getAllCrossRelations
 } from './matchingService.js';
 import { buildTaxonomyPayload } from './taxonomyService.js';
+import { parseNetscapeBookmarks, decodeHtmlEntities } from './netscapeParser.js';
 import {
   resolveBookmarkInput,
   resolveNoteInput,
@@ -19,6 +20,25 @@ import {
 } from './itemValidation.js';
 
 const router = express.Router();
+
+// Escapes LIKE wildcards so a search for "100%" or "snake_case" is literal.
+// Paired with ESCAPE '\\' in the queries below.
+function likeTerm(q) {
+  return `%${q.trim().replace(/[\\%_]/g, ch => `\\${ch}`)}%`;
+}
+
+function googleFavicon(url) {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
+  } catch {
+    return '';
+  }
+}
+
+// Backup timestamps are trusted only if they parse as dates.
+function importTimestamp(value, fallback) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) ? value : fallback;
+}
 
 function withThemeAlias(item) {
   if (!item) return null;
@@ -188,14 +208,14 @@ router.get('/bookmarks', (req, res) => {
 
     if (q) {
       conditions.push(`(
-        LOWER(b.title) LIKE LOWER(?) OR
-        LOWER(b.url) LIKE LOWER(?) OR
-        LOWER(b.description) LIKE LOWER(?) OR
-        LOWER(b.category) LIKE LOWER(?) OR
-        LOWER(b.subcategory) LIKE LOWER(?) OR
-        LOWER(b.theme) LIKE LOWER(?)
+        LOWER(b.title) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(b.url) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(b.description) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(b.category) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(b.subcategory) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(b.theme) LIKE LOWER(?) ESCAPE '\\'
       )`);
-      const term = `%${q.trim()}%`;
+      const term = likeTerm(q);
       params.push(term, term, term, term, term, term);
     }
 
@@ -242,39 +262,33 @@ router.post('/bookmarks', (req, res) => {
     const { title, url, description, category, subcategory, theme, favicon, color, icon } = resolved.values;
 
     const now = new Date().toISOString();
-    let autoFavicon = favicon;
-    if (!autoFavicon && url) {
-      try {
-        const parsed = new URL(url);
-        autoFavicon = `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=32`;
-      } catch {
-        autoFavicon = '';
-      }
-    }
+    const autoFavicon = favicon || googleFavicon(url);
 
     const insert = db.prepare(`
       INSERT INTO bookmarks (title, url, description, category, subcategory, theme, favicon, color, icon, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const info = insert.run(
-      title,
-      url,
-      description,
-      category,
-      subcategory,
-      theme,
-      autoFavicon || '',
-      color,
-      icon,
-      now,
-      now
-    );
-
-    const newId = info.lastInsertRowid;
-    if (Array.isArray(tags)) {
-      setItemTags('bookmark', newId, tags);
-    }
+    // Row and tags are written together or not at all.
+    const newId = db.transaction(() => {
+      const info = insert.run(
+        title,
+        url,
+        description,
+        category,
+        subcategory,
+        theme,
+        autoFavicon,
+        color,
+        icon,
+        now,
+        now
+      );
+      if (Array.isArray(tags)) {
+        setItemTags('bookmark', info.lastInsertRowid, tags);
+      }
+      return info.lastInsertRowid;
+    })();
 
     const created = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(newId);
     res.status(201).json(enrichBookmark(created));
@@ -302,23 +316,24 @@ router.put('/bookmarks/:id', (req, res) => {
       WHERE id = ?
     `);
 
-    update.run(
-      title,
-      url,
-      description,
-      category,
-      subcategory,
-      theme,
-      favicon,
-      color,
-      icon,
-      now,
-      req.params.id
-    );
-
-    if (Array.isArray(tags)) {
-      setItemTags('bookmark', req.params.id, tags);
-    }
+    db.transaction(() => {
+      update.run(
+        title,
+        url,
+        description,
+        category,
+        subcategory,
+        theme,
+        favicon,
+        color,
+        icon,
+        now,
+        existing.id
+      );
+      if (Array.isArray(tags)) {
+        setItemTags('bookmark', existing.id, tags);
+      }
+    })();
 
     const updated = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(req.params.id);
     res.json(enrichBookmark(updated));
@@ -395,13 +410,13 @@ router.get('/notes', (req, res) => {
 
     if (q) {
       conditions.push(`(
-        LOWER(n.title) LIKE LOWER(?) OR
-        LOWER(n.content) LIKE LOWER(?) OR
-        LOWER(n.category) LIKE LOWER(?) OR
-        LOWER(n.subcategory) LIKE LOWER(?) OR
-        LOWER(n.theme) LIKE LOWER(?)
+        LOWER(n.title) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(n.content) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(n.category) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(n.subcategory) LIKE LOWER(?) ESCAPE '\\' OR
+        LOWER(n.theme) LIKE LOWER(?) ESCAPE '\\'
       )`);
-      const term = `%${q.trim()}%`;
+      const term = likeTerm(q);
       params.push(term, term, term, term, term);
     }
 
@@ -453,20 +468,13 @@ router.post('/notes', (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const info = insert.run(
-      title,
-      content,
-      category,
-      subcategory,
-      theme,
-      now,
-      now
-    );
-
-    const newId = info.lastInsertRowid;
-    if (Array.isArray(tags)) {
-      setItemTags('note', newId, tags);
-    }
+    const newId = db.transaction(() => {
+      const info = insert.run(title, content, category, subcategory, theme, now, now);
+      if (Array.isArray(tags)) {
+        setItemTags('note', info.lastInsertRowid, tags);
+      }
+      return info.lastInsertRowid;
+    })();
 
     const created = db.prepare('SELECT * FROM notes WHERE id = ?').get(newId);
     res.status(201).json(enrichNote(created));
@@ -494,19 +502,12 @@ router.put('/notes/:id', (req, res) => {
       WHERE id = ?
     `);
 
-    update.run(
-      title,
-      content,
-      category,
-      subcategory,
-      theme,
-      now,
-      req.params.id
-    );
-
-    if (Array.isArray(tags)) {
-      setItemTags('note', req.params.id, tags);
-    }
+    db.transaction(() => {
+      update.run(title, content, category, subcategory, theme, now, existing.id);
+      if (Array.isArray(tags)) {
+        setItemTags('note', existing.id, tags);
+      }
+    })();
 
     const updated = db.prepare('SELECT * FROM notes WHERE id = ?').get(req.params.id);
     res.json(enrichNote(updated));
@@ -549,6 +550,9 @@ router.post('/notes/:id/trash', (req, res) => {
    TRASH & RECYCLE BIN
    ========================================================================= */
 
+// Whitelist: the table name is interpolated into SQL, never taken from input.
+const TRASH_TABLES = { bookmark: 'bookmarks', note: 'notes' };
+
 router.get('/trash', (req, res) => {
   try {
     const bookmarks = db.prepare(`
@@ -575,13 +579,13 @@ router.get('/trash', (req, res) => {
 router.post('/trash/:type/:id/restore', (req, res) => {
   try {
     const { type, id } = req.params;
-    if (type === 'bookmark') {
-      db.prepare('UPDATE bookmarks SET deleted_at = NULL WHERE id = ?').run(id);
-    } else if (type === 'note') {
-      db.prepare('UPDATE notes SET deleted_at = NULL WHERE id = ?').run(id);
-    } else {
-      return res.status(400).json({ error: 'Tipo inválido' });
-    }
+    const table = TRASH_TABLES[type];
+    if (!table) return res.status(400).json({ error: 'Tipo inválido' });
+
+    const { changes } = db
+      .prepare(`UPDATE ${table} SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
+      .run(id);
+    if (changes === 0) return res.status(404).json({ error: 'Elemento no encontrado en la papelera' });
     res.json({ success: true, message: 'Elemento restaurado con éxito' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -591,19 +595,15 @@ router.post('/trash/:type/:id/restore', (req, res) => {
 router.delete('/trash/:type/:id', (req, res) => {
   try {
     const { type, id } = req.params;
-    if (type === 'bookmark') {
-      db.transaction(() => {
-        removeItemTags('bookmark', id);
-        db.prepare('DELETE FROM bookmarks WHERE id = ?').run(id);
-      })();
-    } else if (type === 'note') {
-      db.transaction(() => {
-        removeItemTags('note', id);
-        db.prepare('DELETE FROM notes WHERE id = ?').run(id);
-      })();
-    } else {
-      return res.status(400).json({ error: 'Tipo inválido' });
-    }
+    const table = TRASH_TABLES[type];
+    if (!table) return res.status(400).json({ error: 'Tipo inválido' });
+
+    const changes = db.transaction(() => {
+      const result = db.prepare(`DELETE FROM ${table} WHERE id = ? AND deleted_at IS NOT NULL`).run(id);
+      if (result.changes > 0) removeItemTags(type, id);
+      return result.changes;
+    })();
+    if (changes === 0) return res.status(404).json({ error: 'Elemento no encontrado en la papelera' });
     res.json({ success: true, message: 'Elemento eliminado definitivamente' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -648,6 +648,12 @@ router.post('/relations/link', (req, res) => {
       return res.status(400).json({ error: 'bookmarkId y noteId son requeridos' });
     }
 
+    const bookmarkExists = db.prepare('SELECT 1 FROM bookmarks WHERE id = ?').get(bookmarkId);
+    const noteExists = db.prepare('SELECT 1 FROM notes WHERE id = ?').get(noteId);
+    if (!bookmarkExists || !noteExists) {
+      return res.status(404).json({ error: 'Marcador o nota no encontrados' });
+    }
+
     const now = new Date().toISOString();
     const stmt = db.prepare(`
       INSERT INTO manual_relations (bookmark_id, note_id, notes, created_at)
@@ -655,7 +661,7 @@ router.post('/relations/link', (req, res) => {
       ON CONFLICT(bookmark_id, note_id) DO UPDATE SET notes = excluded.notes
     `);
 
-    stmt.run(bookmarkId, noteId, (notes || '').trim(), now);
+    stmt.run(bookmarkId, noteId, typeof notes === 'string' ? notes.trim() : '', now);
     res.json({ success: true, message: 'Vínculo establecido con éxito' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -711,8 +717,24 @@ router.post('/backup/import', (req, res) => {
     if (!Array.isArray(bookmarks) && !Array.isArray(notes)) {
       return res.status(400).json({ error: 'Formato inválido de archivo JSON de backup' });
     }
+    if (mode !== 'append' && mode !== 'overwrite') {
+      return res.status(400).json({ error: 'Modo de importación inválido' });
+    }
 
     const now = new Date().toISOString();
+
+    const insertBookmark = db.prepare(`
+      INSERT INTO bookmarks (title, url, description, category, subcategory, theme, favicon, color, icon, deleted_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertNote = db.prepare(`
+      INSERT INTO notes (title, content, category, subcategory, theme, deleted_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertRel = db.prepare(`
+      INSERT OR IGNORE INTO manual_relations (bookmark_id, note_id, notes, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
 
     const tx = db.transaction(() => {
       if (mode === 'overwrite') {
@@ -723,89 +745,69 @@ router.post('/backup/import', (req, res) => {
         db.prepare('DELETE FROM notes').run();
       }
 
-      const insertBookmark = db.prepare(`
-        INSERT INTO bookmarks (title, url, description, category, subcategory, theme, favicon, color, icon, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const insertNote = db.prepare(`
-        INSERT INTO notes (title, content, category, subcategory, theme, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-
+      // Backup ids -> new ids. Relations are restored ONLY through these maps:
+      // a raw backup id may belong to an unrelated item already in the database.
       const oldBmToNewId = new Map();
       const oldNoteToNewId = new Map();
+      let relationCount = 0;
 
-      if (Array.isArray(bookmarks)) {
-        for (const b of bookmarks) {
-          const bookmark = normalizeImportBookmark(b);
-          const info = insertBookmark.run(
-            bookmark.title,
-            bookmark.url,
-            bookmark.description,
-            bookmark.category,
-            bookmark.subcategory,
-            bookmark.theme,
-            bookmark.favicon,
-            bookmark.color,
-            bookmark.icon,
-            b.created_at || now,
-            b.updated_at || now
-          );
-          const newId = info.lastInsertRowid;
-          oldBmToNewId.set(b.id, newId);
-          if (Array.isArray(b.tags)) {
-            setItemTags('bookmark', newId, b.tags);
-          }
-        }
+      for (const b of Array.isArray(bookmarks) ? bookmarks : []) {
+        const bookmark = normalizeImportBookmark(b);
+        const info = insertBookmark.run(
+          bookmark.title,
+          bookmark.url,
+          bookmark.description,
+          bookmark.category,
+          bookmark.subcategory,
+          bookmark.theme,
+          bookmark.favicon,
+          bookmark.color,
+          bookmark.icon,
+          importTimestamp(b?.deleted_at, null), // keep trashed items in the trash
+          importTimestamp(b?.created_at, now),
+          importTimestamp(b?.updated_at, now)
+        );
+        if (b?.id != null) oldBmToNewId.set(b.id, info.lastInsertRowid);
+        if (Array.isArray(b?.tags)) setItemTags('bookmark', info.lastInsertRowid, b.tags);
       }
 
-      if (Array.isArray(notes)) {
-        for (const n of notes) {
-          const note = normalizeImportNote(n);
-          const info = insertNote.run(
-            note.title,
-            note.content,
-            note.category,
-            note.subcategory,
-            note.theme,
-            n.created_at || now,
-            n.updated_at || now
-          );
-          const newId = info.lastInsertRowid;
-          oldNoteToNewId.set(n.id, newId);
-          if (Array.isArray(n.tags)) {
-            setItemTags('note', newId, n.tags);
-          }
-        }
+      for (const n of Array.isArray(notes) ? notes : []) {
+        const note = normalizeImportNote(n);
+        const info = insertNote.run(
+          note.title,
+          note.content,
+          note.category,
+          note.subcategory,
+          note.theme,
+          importTimestamp(n?.deleted_at, null),
+          importTimestamp(n?.created_at, now),
+          importTimestamp(n?.updated_at, now)
+        );
+        if (n?.id != null) oldNoteToNewId.set(n.id, info.lastInsertRowid);
+        if (Array.isArray(n?.tags)) setItemTags('note', info.lastInsertRowid, n.tags);
       }
 
-      if (Array.isArray(manualRelations)) {
-        const insertRel = db.prepare(`
-          INSERT OR IGNORE INTO manual_relations (bookmark_id, note_id, notes, created_at)
-          VALUES (?, ?, ?, ?)
-        `);
-
-        for (const mr of manualRelations) {
-          const mappedBmId = oldBmToNewId.get(mr.bookmark_id) || mr.bookmark_id;
-          const mappedNoteId = oldNoteToNewId.get(mr.note_id) || mr.note_id;
-
-          // Check if both exist
-          const bmExists = db.prepare('SELECT id FROM bookmarks WHERE id = ?').get(mappedBmId);
-          const noteExists = db.prepare('SELECT id FROM notes WHERE id = ?').get(mappedNoteId);
-
-          if (bmExists && noteExists) {
-            insertRel.run(mappedBmId, mappedNoteId, mr.notes || '', mr.created_at || now);
-          }
-        }
+      for (const mr of Array.isArray(manualRelations) ? manualRelations : []) {
+        const bookmarkId = oldBmToNewId.get(mr?.bookmark_id);
+        const noteId = oldNoteToNewId.get(mr?.note_id);
+        if (bookmarkId === undefined || noteId === undefined) continue;
+        const notesText = typeof mr.notes === 'string' ? mr.notes : '';
+        relationCount += insertRel.run(bookmarkId, noteId, notesText, importTimestamp(mr.created_at, now)).changes;
       }
+
+      return {
+        bookmarks: Array.isArray(bookmarks) ? bookmarks.length : 0,
+        notes: Array.isArray(notes) ? notes.length : 0,
+        relations: relationCount
+      };
     });
 
-    tx();
+    const counts = tx();
 
     res.json({
       success: true,
-      message: `Importación completada con éxito (${(bookmarks || []).length} marcadores, ${(notes || []).length} notas)`
+      ...counts,
+      message: `Importación completada con éxito (${counts.bookmarks} marcadores, ${counts.notes} notas, ${counts.relations} vínculos)`
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -815,6 +817,24 @@ router.post('/backup/import', (req, res) => {
 /* =========================================================================
    METADATA EXTRACTOR (OPENGRAPH & TITLE)
    ========================================================================= */
+
+// Title and description live in <head>; reading the first 512 KB is plenty and
+// stops a link to a huge file from being loaded into memory.
+const METADATA_MAX_BYTES = 512 * 1024;
+
+async function readTextUpTo(response, maxBytes) {
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (received < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+  }
+  await reader.cancel().catch(() => {});
+  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, maxBytes));
+}
 
 router.post('/bookmarks/metadata', async (req, res) => {
   try {
@@ -828,7 +848,7 @@ router.post('/bookmarks/metadata', async (req, res) => {
 
     let title = '';
     let description = '';
-    let favicon = `https://www.google.com/s2/favicons?domain=${parsedUrl.hostname}&sz=32`;
+    const favicon = googleFavicon(url);
 
     try {
       const response = await fetch(url, {
@@ -838,8 +858,9 @@ router.post('/bookmarks/metadata', async (req, res) => {
         }
       });
 
-      if (response.ok) {
-        const html = await response.text();
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('html')) {
+        const html = await readTextUpTo(response, METADATA_MAX_BYTES);
 
         // Extract title
         const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
@@ -869,8 +890,8 @@ router.post('/bookmarks/metadata', async (req, res) => {
     }
 
     res.json({
-      title: title.trim(),
-      description: description.trim(),
+      title: decodeHtmlEntities(title).trim(),
+      description: decodeHtmlEntities(description).trim(),
       favicon
     });
   } catch (err) {
@@ -938,59 +959,56 @@ router.post('/bookmarks/check-health', async (req, res) => {
 router.post('/backup/import-html', (req, res) => {
   try {
     const { htmlContent, defaultCategory = 'Navegador' } = req.body;
-    if (!htmlContent) return res.status(400).json({ error: 'Contenido HTML requerido' });
+    if (typeof htmlContent !== 'string' || !htmlContent) {
+      return res.status(400).json({ error: 'Contenido HTML requerido' });
+    }
 
     const resolvedCategory = typeof defaultCategory === 'string' ? defaultCategory.trim() : '';
     if (!resolvedCategory) {
       return res.status(400).json({ error: 'La categoría por defecto es requerida' });
     }
 
-    const bookmarkRegex = /<A\s+HREF=["']([^"']+)["'][^>]*>(.*?)<\/A>/gi;
     const now = new Date().toISOString();
-    let match;
-    const importedBookmarks = [];
-
     const insert = db.prepare(`
       INSERT INTO bookmarks (title, url, description, category, subcategory, theme, favicon, color, icon, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const tx = db.transaction(() => {
-      while ((match = bookmarkRegex.exec(htmlContent)) !== null) {
-        const url = match[1];
-        const title = match[2].replace(/<[^>]+>/g, '').trim() || 'Sin título';
+    // Re-importing the same export must not duplicate what is already saved.
+    const knownUrls = new Set(db.prepare('SELECT url FROM bookmarks').all().map(r => r.url));
+    let imported = 0;
+    let skipped = 0;
 
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-          let favicon = '';
-          try {
-            const parsed = new URL(url);
-            favicon = `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=32`;
-          } catch {}
-
-          insert.run(
-            title,
-            url,
-            'Importado desde marcadores del navegador',
-            resolvedCategory,
-            'Importados',
-            'Referencia Web',
-            favicon,
-            '#10b981',
-            'bookmark',
-            now,
-            now
-          );
-          importedBookmarks.push({ title, url });
+    db.transaction(() => {
+      for (const bm of parseNetscapeBookmarks(htmlContent)) {
+        if (!isWebUrl(bm.url) || knownUrls.has(bm.url)) {
+          skipped++;
+          continue;
         }
+        knownUrls.add(bm.url);
+        insert.run(
+          bm.title || 'Sin título',
+          bm.url,
+          'Importado desde marcadores del navegador',
+          resolvedCategory,
+          bm.folder || 'Importados', // the browser folder becomes the subcategory
+          'Referencia Web',
+          googleFavicon(bm.url),
+          '#10b981',
+          'bookmark',
+          bm.addedAt || now,
+          now
+        );
+        imported++;
       }
-    });
-
-    tx();
+    })();
 
     res.json({
       success: true,
-      count: importedBookmarks.length,
-      message: `Se importaron ${importedBookmarks.length} marcadores exitosamente.`
+      count: imported,
+      skipped,
+      message: `Se importaron ${imported} marcadores exitosamente` +
+        (skipped ? ` (${skipped} omitidos por duplicados o URL no válida).` : '.')
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

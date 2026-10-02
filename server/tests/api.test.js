@@ -20,6 +20,7 @@ import {
   normalizeImportNote
 } from '../itemValidation.js';
 import { localOnly } from '../localOnly.js';
+import { parseNetscapeBookmarks, decodeHtmlEntities } from '../netscapeParser.js';
 
 test('Database and seed items exist', () => {
   const bookmarks = db.prepare('SELECT COUNT(*) as count FROM bookmarks').get();
@@ -221,32 +222,32 @@ test('Cross relations matrix returns all pairs', () => {
   assert.ok(first.bookmarkId && first.noteId && first.relationship, 'Cada relación debe tener campos completos');
 });
 
-test('HTML Bookmark Netscape format parsing test', () => {
-  const htmlSample = `
+test('parseNetscapeBookmarks reads folders, dates and decodes entities', () => {
+  const html = `
     <!DOCTYPE NETSCAPE-Bookmark-file-1>
-    <HTML>
-    <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
-    <Title>Bookmarks</Title>
-    <H1>Bookmarks</H1>
     <DL><p>
-      <DT><A HREF="https://nodejs.org" ADD_DATE="1600000000">Node.js Official</A>
-      <DT><A HREF="https://github.com" ADD_DATE="1600000001">GitHub Code</A>
+      <DT><H3 ADD_DATE="1600000000">Barra &amp; favoritos</H3>
+      <DL><p>
+        <DT><A HREF="https://nodejs.org" ADD_DATE="1600000000">Node.js Official</A>
+        <DT><H3>Dev</H3>
+        <DL><p>
+          <DT><A HREF="https://example.com/?a=1&amp;b=2" ICON="data:x">Tom &amp; Jerry&#39;s &lt;site&gt;</A>
+        </DL><p>
+      </DL><p>
+      <DT><A href='https://root.test'>Root</A>
     </DL><p>
-    </HTML>
   `;
 
-  const regex = /<A\s+HREF=["']([^"']+)["'][^>]*>(.*?)<\/A>/gi;
-  const matches = [];
-  let m;
-  while ((m = regex.exec(htmlSample)) !== null) {
-    matches.push({ url: m[1], title: m[2] });
-  }
+  const result = parseNetscapeBookmarks(html);
+  assert.deepEqual(result.map(b => b.url), ['https://nodejs.org', 'https://example.com/?a=1&b=2', 'https://root.test']);
+  assert.equal(result[1].title, "Tom & Jerry's <site>");
+  assert.deepEqual(result.map(b => b.folder), ['Barra & favoritos', 'Dev', '']);
+  assert.equal(result[0].addedAt, new Date(1600000000 * 1000).toISOString());
+  assert.equal(result[2].addedAt, null);
+});
 
-  assert.equal(matches.length, 2, 'Debe extraer 2 marcadores');
-  assert.equal(matches[0].url, 'https://nodejs.org');
-  assert.equal(matches[0].title, 'Node.js Official');
-  assert.equal(matches[1].url, 'https://github.com');
-  assert.equal(matches[1].title, 'GitHub Code');
+test('decodeHtmlEntities handles named, decimal and hex entities', () => {
+  assert.equal(decodeHtmlEntities('a &amp; b &#233; &#xE9; &quot;x&quot; &unknown;'), 'a & b é é "x" &unknown;');
 });
 
 test('Color, icon and soft-delete/trash cycle', () => {
@@ -895,5 +896,126 @@ test('Sample data is seeded only once, never after the user empties the library'
     assert.equal(db.prepare('SELECT COUNT(*) as c FROM bookmarks').get().c, 0, 'No debe volver a sembrar');
   } finally {
     db.exec('ROLLBACK');
+  }
+});
+
+/* =========================================================================
+   IMPORTS, TRASH, LINKS AND SEARCH OVER HTTP
+   ========================================================================= */
+
+async function api(method, route, body) {
+  const res = await fetch(`${apiBaseUrl}/api${route}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+function snapshotIds() {
+  return {
+    bookmarks: new Set(db.prepare('SELECT id FROM bookmarks').all().map(r => r.id)),
+    notes: new Set(db.prepare('SELECT id FROM notes').all().map(r => r.id))
+  };
+}
+
+function cleanupNewRows(before) {
+  const newBookmarks = db.prepare('SELECT id FROM bookmarks').all().map(r => r.id).filter(id => !before.bookmarks.has(id));
+  const newNotes = db.prepare('SELECT id FROM notes').all().map(r => r.id).filter(id => !before.notes.has(id));
+  cleanupRouteRows({ bookmarkIds: newBookmarks, noteIds: newNotes });
+  return { newBookmarks, newNotes };
+}
+
+test('JSON import keeps trashed items in the trash and maps relations only through imported ids', async () => {
+  const before = snapshotIds();
+  // An existing bookmark whose id collides with a backup id that is NOT in the backup.
+  const existingId = insertRouteBookmark('Existing BM', 'https://existing.test');
+
+  const { status, body } = await api('POST', '/backup/import', {
+    mode: 'append',
+    bookmarks: [
+      { id: 9001, title: 'Activo', url: 'https://activo.test', category: 'Imp' },
+      { id: 9002, title: 'En papelera', url: 'https://papelera.test', category: 'Imp', deleted_at: '2024-01-01T00:00:00.000Z' }
+    ],
+    notes: [{ id: 7001, title: 'Nota', content: 'x', category: 'Imp' }],
+    manualRelations: [
+      { bookmark_id: 9001, note_id: 7001, notes: 'ok' },
+      { bookmark_id: existingId, note_id: 7001, notes: 'debe ignorarse' }
+    ]
+  });
+
+  try {
+    assert.equal(status, 200);
+    assert.equal(body.relations, 1, 'Solo se restaura la relación entre ids importados');
+
+    const trashed = db.prepare("SELECT deleted_at FROM bookmarks WHERE url = 'https://papelera.test'").get();
+    assert.equal(trashed.deleted_at, '2024-01-01T00:00:00.000Z');
+    const active = db.prepare("SELECT deleted_at FROM bookmarks WHERE url = 'https://activo.test'").get();
+    assert.equal(active.deleted_at, null);
+
+    const wrongLinks = db.prepare('SELECT COUNT(*) as c FROM manual_relations WHERE bookmark_id = ?').get(existingId).c;
+    assert.equal(wrongLinks, 0, 'No debe vincular un marcador existente por coincidencia de id');
+  } finally {
+    const { newBookmarks } = cleanupNewRows(before);
+    assert.ok(newBookmarks.includes(existingId));
+  }
+});
+
+test('JSON import rejects an unknown mode', async () => {
+  const { status } = await api('POST', '/backup/import', { mode: 'wipe', bookmarks: [] });
+  assert.equal(status, 400);
+});
+
+test('HTML import uses folders, decodes entities and skips duplicates', async () => {
+  const before = snapshotIds();
+  const html = `<DL><p><DT><H3>Recetas</H3><DL><p>
+    <DT><A HREF="https://import.test/?a=1&amp;b=2">Pan &amp; queso</A>
+    <DT><A HREF="https://import.test/?a=1&amp;b=2">Duplicado</A>
+    <DT><A HREF="javascript:alert(1)">Malo</A>
+  </DL><p></DL><p>`;
+
+  try {
+    const first = await api('POST', '/backup/import-html', { htmlContent: html, defaultCategory: 'Navegador' });
+    assert.equal(first.body.count, 1);
+    assert.equal(first.body.skipped, 2);
+
+    const row = db.prepare("SELECT title, subcategory FROM bookmarks WHERE url = 'https://import.test/?a=1&b=2'").get();
+    assert.equal(row.title, 'Pan & queso');
+    assert.equal(row.subcategory, 'Recetas');
+
+    const second = await api('POST', '/backup/import-html', { htmlContent: html, defaultCategory: 'Navegador' });
+    assert.equal(second.body.count, 0, 'Reimportar no duplica');
+  } finally {
+    cleanupNewRows(before);
+  }
+});
+
+test('Trash restore and destroy answer 404 for items that are not in the trash', async () => {
+  const id = insertRouteBookmark('Live BM', 'https://live.test');
+  try {
+    assert.equal((await api('POST', `/trash/bookmark/${id}/restore`)).status, 404);
+    assert.equal((await api('DELETE', `/trash/bookmark/${id}`)).status, 404);
+    assert.ok(db.prepare('SELECT 1 FROM bookmarks WHERE id = ?').get(id), 'Un elemento activo no se destruye');
+    assert.equal((await api('POST', '/trash/folder/1/restore')).status, 400);
+  } finally {
+    cleanupRouteRows({ bookmarkIds: [id] });
+  }
+});
+
+test('Linking unknown ids answers 404 instead of a database error', async () => {
+  const { status } = await api('POST', '/relations/link', { bookmarkId: 999999, noteId: 999999 });
+  assert.equal(status, 404);
+});
+
+test('Search treats % and _ literally', async () => {
+  const a = insertRouteBookmark('Descuento 100% real', 'https://pct.test');
+  const b = insertRouteBookmark('Descuento 1000 real', 'https://nopct.test');
+  try {
+    const { body } = await api('GET', `/bookmarks?q=${encodeURIComponent('100%')}`);
+    const ids = body.map(x => x.id);
+    assert.ok(ids.includes(a));
+    assert.ok(!ids.includes(b), '"%" no debe actuar como comodín');
+  } finally {
+    cleanupRouteRows({ bookmarkIds: [a, b] });
   }
 });
