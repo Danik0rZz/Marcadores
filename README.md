@@ -148,3 +148,9 @@ La API no tiene autenticación, así que está pensada para uso **solo local**:
 │   └── favicons/                   # Caché de íconos
 └── .github/workflows/ci.yml        # Lint, tests y build en cada push
 ```
+
+---
+
+## 📄 Licencia
+
+[MIT](LICENSE) © 2026 danik0rzz
