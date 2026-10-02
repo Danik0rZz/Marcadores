@@ -185,25 +185,58 @@ export function computeAverageAffinity(relations) {
 // One integration step. The drag target arrives on sim (`draggedNode`), set by
 // the caller from the camera's live drag state, so the step stays a pure
 // function of its input.
+// Repulsion between one pair; beyond REPULSION_RANGE it is exactly zero.
+function repel(n1, n2, dragged) {
+  const dx = n2.x - n1.x;
+  const dy = n2.y - n1.y;
+  const distSq = dx * dx + dy * dy + 100;
+  const dist = Math.sqrt(distSq);
+  if (dist >= REPULSION_RANGE) return;
+  const force = REPULSION / distSq;
+  const fx = (dx / dist) * force;
+  const fy = (dy / dist) * force;
+  if (n1 !== dragged) { n1.vx -= fx; n1.vy -= fy; }
+  if (n2 !== dragged) { n2.vx += fx; n2.vy += fy; }
+}
+
+// Half of the 8 neighbours: each pair of adjacent cells is visited once.
+const FORWARD_CELLS = [[1, 0], [-1, 1], [0, 1], [1, 1]];
+
+// Repulsion has a finite range, so a uniform grid with cells of that size
+// finds every interacting pair by looking only at adjacent cells: the same
+// forces as comparing all pairs, but ~O(n) instead of O(n²) per frame.
+function applyRepulsion(nodes, dragged) {
+  const grid = new Map();
+  for (const node of nodes) {
+    const cx = Math.floor(node.x / REPULSION_RANGE);
+    const cy = Math.floor(node.y / REPULSION_RANGE);
+    const key = `${cx},${cy}`;
+    let cell = grid.get(key);
+    if (!cell) {
+      cell = { cx, cy, nodes: [] };
+      grid.set(key, cell);
+    }
+    cell.nodes.push(node);
+  }
+
+  grid.forEach(({ cx, cy, nodes: cellNodes }) => {
+    for (let i = 0; i < cellNodes.length; i += 1) {
+      for (let j = i + 1; j < cellNodes.length; j += 1) repel(cellNodes[i], cellNodes[j], dragged);
+    }
+    for (const [ox, oy] of FORWARD_CELLS) {
+      const other = grid.get(`${cx + ox},${cy + oy}`);
+      if (!other) continue;
+      for (const a of cellNodes) {
+        for (const b of other.nodes) repel(a, b, dragged);
+      }
+    }
+  });
+}
+
 export function stepPhysics(sim) {
   const { nodes, links } = sim;
   const dragged = sim.draggedNode;
-  for (let i = 0; i < nodes.length; i += 1) {
-    for (let j = i + 1; j < nodes.length; j += 1) {
-      const n1 = nodes[i];
-      const n2 = nodes[j];
-      const dx = n2.x - n1.x;
-      const dy = n2.y - n1.y;
-      const distSq = dx * dx + dy * dy + 100;
-      const dist = Math.sqrt(distSq);
-      if (dist >= REPULSION_RANGE) continue; // cheap far-pair gate
-      const force = REPULSION / distSq;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      if (n1 !== dragged) { n1.vx -= fx; n1.vy -= fy; }
-      if (n2 !== dragged) { n2.vx += fx; n2.vy += fy; }
-    }
-  }
+  applyRepulsion(nodes, dragged);
   links.forEach((link) => {
     const { source: s, target: t } = link;
     if (!s || !t) return;

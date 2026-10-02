@@ -29,11 +29,18 @@ El sistema analiza constantemente las similitudes entre marcadores y notas:
 - **Vínculos manuales directos**: Además del matching automático, podés conectar explícitamente cualquier nota con cualquier marcador y añadir una nota explicativa personal.
 
 ### 4. Matriz de Cruce y Grafo de Relaciones
-Una pestaña dedicada para explorar todas las interconexiones del sistema en una sola pantalla, con filtros por nivel de afinidad, tags compartidos o vínculos manuales.
+Una pestaña dedicada para explorar todas las interconexiones del sistema en una sola pantalla, con filtros por nivel de afinidad, tags compartidos o vínculos manuales, y un grafo interactivo con física propia.
 
-### 5. Copias de Seguridad (Backup JSON)
-- **Exportar**: Descarga un archivo `.json` completo con todos los marcadores, notas, tags, relaciones e historial.
-- **Importar**: Permite restaurar datos desde un archivo `.json` eligiendo entre **anexar** a los datos existentes o **reemplazar todo**.
+### 5. Notas en Markdown
+Editor con vista previa, resaltado de sintaxis (highlight.js), botón de copiar en los bloques de código y enlaces `[[WikiLinks]]` entre notas y marcadores.
+
+### 6. Copias de Seguridad e Importación
+- **Exportar**: Descarga un archivo `.json` completo con todos los marcadores, notas, tags, relaciones y papelera.
+- **Importar JSON**: Restaura un backup eligiendo entre **anexar** a los datos existentes o **reemplazar todo**.
+- **Importar desde el navegador**: Lee el archivo HTML que exportan Chrome, Firefox o Edge; cada carpeta pasa a ser una subcategoría y se omiten los duplicados.
+
+### 7. Privacidad
+La página no hace peticiones a terceros: las fuentes van incluidas en el bundle y los favicons los descarga el propio servidor desde cada sitio guardado (no desde un servicio de Google) y los guarda en caché en `data/favicons/`.
 
 ---
 
@@ -41,8 +48,8 @@ Una pestaña dedicada para explorar todas las interconexiones del sistema en una
 
 - **Backend**: Node.js + Express
 - **Base de Datos**: SQLite nativo con `better-sqlite3` en modo WAL (Write-Ahead Logging) y claves foráneas activadas.
-- **Frontend**: React 19 + Vite + Tailwind CSS v4 + Lucide Icons.
-- **Testing**: Node.js Test Runner integrado (`node:test` y `node:assert`).
+- **Frontend**: React 19 + Vite + Tailwind CSS v4 + Lucide Icons, `marked` + DOMPurify + highlight.js para Markdown.
+- **Testing**: Node.js Test Runner integrado (`node:test` y `node:assert`) y oxlint.
 
 ---
 
@@ -107,31 +114,37 @@ La API no tiene autenticación, así que está pensada para uso **solo local**:
 
 ```
 .
-├── client/                     # Frontend en React + Vite + Tailwind
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Navbar.jsx              # Barra de navegación, pestañas y búsqueda
-│   │   │   ├── FilterBar.jsx           # Filtros por categoría, subcategoría, tema y tags
-│   │   │   ├── BookmarkCard.jsx        # Tarjeta de marcador con badges y acciones
-│   │   │   ├── NoteCard.jsx            # Tarjeta de nota con vista previa y acciones
-│   │   │   ├── RelatedDrawerModal.jsx  # Modal de coincidencias y relaciones cruzadas
-│   │   │   ├── BookmarkFormModal.jsx   # Formulario de alta/edición de marcadores
-│   │   │   ├── NoteFormModal.jsx       # Formulario de alta/edición de notas
-│   │   │   ├── ManualLinkModal.jsx     # Modal para vincular manualmente
-│   │   │   ├── CrossMatrixView.jsx     # Tablero global de conexiones
-│   │   │   └── BackupModal.jsx         # Exportación e importación JSON
-│   │   ├── api.js                      # Cliente HTTP para la API local
-│   │   ├── App.jsx                     # Componente principal y orquestador de estado
-│   │   └── index.css                   # Estilos Tailwind CSS
-├── server/                     # Backend en Node.js + Express + SQLite
-│   ├── db.js                   # Esquema SQLite, migraciones y datos semilla
-│   ├── matchingService.js      # Motor de cálculo de afinidad y relaciones
-│   ├── routes.js               # Endpoints REST (CRUD, taxonomía, matriz, backup)
-│   ├── index.js                # Servidor Express
-│   └── tests/
-│       └── api.test.js         # Suite de pruebas automatizadas
-├── data/                       # SQLite local (se crea al iniciar; no se versiona)
-│   └── app.db                  # Tus datos personales: excluido por .gitignore
-├── package.json                # Scripts raíz (dev, build, start, test)
-└── README.md                   # Documentación técnica
+├── client/                         # Frontend en React + Vite + Tailwind
+│   └── src/
+│       ├── App.jsx                 # Pestañas, modales y acciones
+│       ├── api.js                  # Cliente HTTP de la API local
+│       ├── graphEngine.js          # Física y geometría del grafo (sin React)
+│       ├── hooks/
+│       │   ├── useLibrary.js       # Biblioteca completa + resultados filtrados
+│       │   ├── useDialog.js        # Foco, Escape y apilado de modales
+│       │   ├── useFormState.js     # Estado de formularios y cambios sin guardar
+│       │   └── useToasts.js        # Notificaciones
+│       ├── components/
+│       │   ├── CollectionPage.jsx  # Página común de marcadores y notas
+│       │   ├── Dialog.jsx          # Contenedor accesible de los modales
+│       │   ├── MarkdownViewer.jsx  # Markdown, WikiLinks y resaltado de código
+│       │   ├── GraphView.jsx       # Grafo interactivo en canvas
+│       │   ├── *FormModal.jsx      # Alta y edición de marcadores y notas
+│       │   └── ...                 # Tarjetas, tablas, matriz, barra lateral, ajustes
+│       └── utils/                  # Favicons y extractos de texto
+├── server/                         # Backend en Node.js + Express + SQLite
+│   ├── index.js                    # Servidor Express (solo local)
+│   ├── localOnly.js                # Bloqueo de peticiones de otros orígenes
+│   ├── db.js                       # Esquema, migraciones y datos de ejemplo
+│   ├── routes.js                   # Endpoints REST
+│   ├── matchingService.js          # Motor de afinidad y relaciones
+│   ├── taxonomyService.js          # Árbol de categorías
+│   ├── itemValidation.js           # Validación de entradas e importaciones
+│   ├── netscapeParser.js           # Importación de marcadores del navegador
+│   ├── faviconService.js           # Descarga y caché de favicons
+│   └── tests/                      # Suite de pruebas (base de datos temporal)
+├── data/                           # Se crea al iniciar; no se versiona
+│   ├── app.db                      # Tus datos personales
+│   └── favicons/                   # Caché de íconos
+└── .github/workflows/ci.yml        # Lint, tests y build en cada push
 ```
