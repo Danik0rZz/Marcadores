@@ -2,6 +2,8 @@
 
 Aplicación web local desarrollada para gestionar, clasificar y correlacionar **Marcadores del Navegador** y **Notas de Conocimiento** mediante una taxonomía multidimensional y un motor de afinidad cruzada.
 
+**Probala sin instalar nada:** https://danik0rzz.github.io/Marcadores/ (versión web; tus datos quedan solo en tu navegador).
+
 ---
 
 ## 🚀 Características Principales
@@ -84,15 +86,32 @@ npm start
 
 Abrí tu navegador en **`http://localhost:3001`**.
 
-### 3. Ejecutar Pruebas Automatizadas
+### 3. Versión Web (GitHub Pages)
+La misma app, sin servidor: la API corre dentro de la página sobre SQLite compilado a WebAssembly (`sql.js`) y los datos se guardan en el IndexedDB del navegador.
+
 ```bash
-npm test        # tests del servidor + build del cliente
-npm run lint    # análisis estático del cliente (oxlint)
+npm run build:pages   # genera client/dist-pages/
 ```
 
-GitHub Actions ejecuta ambos en cada push y pull request (`.github/workflows/ci.yml`).
+- Usa **el mismo código de reglas** que el servidor (`server/apiRoutes.js`): validaciones, afinidades, papelera, importaciones y backups se comportan igual.
+- **Los backups JSON son compatibles en ambos sentidos**: un backup de la versión web se restaura en la versión local y viceversa.
+- Cada visitante tiene sus propios datos, que no salen de su navegador. Si borra los datos del sitio o cambia de navegador, no los verá: conviene exportar backups.
+- No disponible en la web (necesitan leer otros sitios): **Autodetectar** título, **Comprobar enlace** y los favicons de cada sitio.
 
-Las pruebas usan una base de datos temporal: nunca tocan `data/app.db`.
+El workflow `.github/workflows/pages.yml` publica la versión web en cada push a `main`. Requiere activar una vez **Settings → Pages → Source: GitHub Actions** en el repositorio.
+
+### 4. Ejecutar Pruebas Automatizadas
+```bash
+npm test        # tests del servidor (sobre better-sqlite3 y sobre la base del navegador) + ambas builds
+npm run lint    # análisis estático del cliente (oxlint)
+npm run e2e     # pruebas en navegador real: modo local y versión web (incluye backup → restauración)
+```
+
+Para `npm run e2e` hace falta un Chromium: `npx playwright-core install chromium`, o usar uno instalado con `E2E_BROWSER_CHANNEL=msedge` (o `chrome`).
+
+GitHub Actions ejecuta todo en cada push y pull request (`.github/workflows/ci.yml`).
+
+Las pruebas usan bases de datos temporales: nunca tocan `data/app.db`.
 
 ### Configuración y Seguridad
 
@@ -119,6 +138,7 @@ La API no tiene autenticación, así que está pensada para uso **solo local**:
 │       ├── App.jsx                 # Pestañas, modales y acciones
 │       ├── api.js                  # Cliente HTTP de la API local
 │       ├── graphEngine.js          # Física y geometría del grafo (sin React)
+│       ├── backend/                # Versión web: SQLite (WebAssembly) en IndexedDB
 │       ├── hooks/
 │       │   ├── useLibrary.js       # Biblioteca completa + resultados filtrados
 │       │   ├── useDialog.js        # Foco, Escape y apilado de modales
@@ -135,8 +155,10 @@ La API no tiene autenticación, así que está pensada para uso **solo local**:
 ├── server/                         # Backend en Node.js + Express + SQLite
 │   ├── index.js                    # Servidor Express (solo local)
 │   ├── localOnly.js                # Bloqueo de peticiones de otros orígenes
-│   ├── db.js                       # Esquema, migraciones y datos de ejemplo
-│   ├── routes.js                   # Endpoints REST
+│   ├── db.js                       # Conexión SQLite (better-sqlite3)
+│   ├── apiRoutes.js                # La API como tabla de rutas (servidor y versión web)
+│   ├── routes.js                   # Montaje en Express + rutas que usan la red
+│   ├── schema.js                   # Tablas, migraciones y datos de ejemplo
 │   ├── matchingService.js          # Motor de afinidad y relaciones
 │   ├── taxonomyService.js          # Árbol de categorías
 │   ├── itemValidation.js           # Validación de entradas e importaciones
@@ -146,7 +168,8 @@ La API no tiene autenticación, así que está pensada para uso **solo local**:
 ├── data/                           # Se crea al iniciar; no se versiona
 │   ├── app.db                      # Tus datos personales
 │   └── favicons/                   # Caché de íconos
-└── .github/workflows/ci.yml        # Lint, tests y build en cada push
+├── e2e/                            # Pruebas en navegador (playwright-core)
+└── .github/workflows/              # CI y publicación en GitHub Pages
 ```
 
 ---

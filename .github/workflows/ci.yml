@@ -29,5 +29,34 @@ jobs:
       - name: Lint client
         run: npm run lint --prefix client
 
-      - name: Test server and build client
+      # Server tests on better-sqlite3 and again on the browser database
+      # (sql.js), then both client builds (local and GitHub Pages)
+      - name: Test and build
         run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix server
+          npm ci --prefix client
+
+      - name: Install Chromium
+        run: npx playwright-core install --with-deps chromium
+
+      - name: End-to-end tests (local server and GitHub Pages builds)
+        run: npm run e2e

@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+# Publishes the browser-only build (client, mode "pages"): the API runs in
+# the page on SQLite stored in each visitor's browser. No server involved.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # The build only needs the client packages: the server modules it
+      # bundles (route table, matching, schema) use no server dependency.
+      - name: Install dependencies
+        run: npm ci --prefix client
+
+      - name: Build
+        run: npm run build:pages --prefix client
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist-pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
